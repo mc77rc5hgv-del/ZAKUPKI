@@ -229,4 +229,6 @@ OPENAI_MODEL=gpt-5.4
 
 `pnpm-workspace.yaml` обязательно содержит `packages: ["."]`; без этого pnpm 9 в Railpack завершает установку ошибкой `packages field missing or empty`.
 
+Railway запускает `pnpm run build:railway`, который дополнительно устанавливает полный Chromium. Одного `RAILPACK_NODE_PLAYWRIGHT_INSTALL=1` недостаточно для `launchPersistentContext`: Railpack устанавливает только облегчённый headless-shell.
+
 Важно: площадка использует Anti-DDoS и ручную авторизацию/ЭП. Обычный headless Chromium в Railway может не пройти защиту. Для полного доступа к закрытому кабинету надёжнее запускать MCP-мост на рабочем Windows-компьютере с постоянным профилем, а Telegram-бот — рядом с ним или через защищённый частный канал. Railway подходит для бота и аналитики, но не гарантирует прохождение Anti-DDoS и работу локального сертификата ЭП.
