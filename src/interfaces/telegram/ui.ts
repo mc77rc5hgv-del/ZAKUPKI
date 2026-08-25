@@ -1,7 +1,9 @@
 import { InlineKeyboard } from "grammy";
 
-export const mainMenu = () => new InlineKeyboard()
-  .text("🔎 Поиск", "search").text("🎛 Фильтры", "filters").row()
+export const mainMenu = (miniAppUrl="") => {
+  const keyboard=new InlineKeyboard();
+  if(miniAppUrl)keyboard.webApp("Открыть Mini App",miniAppUrl).row();
+  return keyboard.text("🔎 Поиск", "search").text("🎛 Фильтры", "filters").row()
   .text("📄 Карточка", "card").text("🧠 Анализ", "analyze").row()
   .text("🗂 Досье", "dossier").text("📝 Черновик", "drafthelp").row()
   .text("✅ Готовность", "readiness").text("💰 Экономика", "economicshelp").row()
@@ -10,6 +12,7 @@ export const mainMenu = () => new InlineKeyboard()
   .text("🧭 Кабинет РТС", "workspace").text("🛠 Фильтры сайта", "sitefilters").row()
   .text("🔐 Сессия РТС", "session").text("👤 Роль", "role").row()
   .text("ℹ️ Помощь", "help");
+};
 
 export const helpText = `Бот работает через локальный MCP-мост РТС.
 

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0b1220">
+  <title>Закупки · Рабочий кабинет</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="https://telegram.org/js/telegram-web-app.js?63"></script>
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#content">К содержимому</a>
+  <div id="app" class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">РТС-МАРКЕТ · КРАСНОДАРСКИЙ КРАЙ</p>
+        <h1 id="page-title">Обзор</h1>
+      </div>
+      <button id="refresh" class="icon-button" type="button" aria-label="Обновить данные"></button>
+    </header>
+    <main id="content" tabindex="-1" aria-live="polite"></main>
+    <nav class="bottom-nav" aria-label="Основная навигация">
+      <button data-route="overview" aria-current="page"><span class="nav-icon" data-icon="dashboard"></span><span>Обзор</span></button>
+      <button data-route="search"><span class="nav-icon" data-icon="search"></span><span>Поиск</span></button>
+      <button data-route="work"><span class="nav-icon" data-icon="briefcase"></span><span>Работа</span></button>
+      <button data-route="analysis"><span class="nav-icon" data-icon="chart"></span><span>Анализ</span></button>
+      <button data-route="settings"><span class="nav-icon" data-icon="settings"></span><span>Система</span></button>
+    </nav>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <div id="loader" class="loader" hidden><span></span><p>Получаем данные площадки…</p></div>
+  </div>
+</body>
+</html>

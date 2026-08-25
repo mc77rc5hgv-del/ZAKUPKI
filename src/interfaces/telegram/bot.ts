@@ -20,8 +20,8 @@ bot.use(async (ctx, next) => {
   await next();
 });
 
-bot.command("start", ctx => ctx.reply("Помощник по закупкам Краснодарского края готов.", { reply_markup: mainMenu() }));
-bot.command("help", ctx => ctx.reply(helpText, { reply_markup: mainMenu() }));
+bot.command("start", ctx => ctx.reply("Помощник по закупкам Краснодарского края готов.", { reply_markup: mainMenu(botConfig.miniAppUrl) }));
+bot.command("help", ctx => ctx.reply(helpText, { reply_markup: mainMenu(botConfig.miniAppUrl) }));
 bot.command("session", async ctx => ctx.reply(clip(JSON.stringify(await call("rts_session_status"), null, 2))));
 bot.command("role", ctx => ctx.reply("Выберите рабочую роль:", { reply_markup: new InlineKeyboard().text("Заказчик / оператор", "role:operator").text("Участник", "role:participant") }));
 bot.command("search", async ctx => runSearch(ctx, ctx.match.trim()));
@@ -122,6 +122,7 @@ async function economicsCommand(ctx:any,input:string){const fields=Object.fromEn
 async function workplanCommand(ctx:any,url:string){if(!url)return ctx.reply("Укажите URL: /workplan https://...");const wait=await ctx.reply("Формирую план подготовки…");try{const data=await call<any>("rts_build_workplan",{url});const w=data.workplan;await ctx.api.editMessageText(ctx.chat.id,wait.message_id,clip(`Дедлайн: ${w.deadlineAt??"не распознан"}\n\n${w.tasks.map((x:any)=>`${x.status==="overdue"?"🔴":"⬜"} ${x.title}\n${x.owner} · ${x.dueAt??"срок назначить вручную"}`).join("\n\n")}\n\n${w.warnings.join("; ")}`));}catch(e){await ctx.api.editMessageText(ctx.chat.id,wait.message_id,`Ошибка: ${String(e)}`);}}
 
 await bot.api.setMyCommands(botCommands);
+if(botConfig.miniAppUrl)await bot.api.setChatMenuButton({menu_button:{type:"web_app",text:"Открыть кабинет",web_app:{url:botConfig.miniAppUrl}}});
 setInterval(() => void monitorOnce(bot), botConfig.monitorIntervalMs).unref();
 process.once("SIGINT",async()=>{await closeMcp();bot.stop();}); process.once("SIGTERM",async()=>{await closeMcp();bot.stop();});
 console.log("KRD Market Telegram bot started"); await bot.start();

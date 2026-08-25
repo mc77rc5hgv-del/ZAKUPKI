@@ -11,6 +11,10 @@ export const botConfig = {
   mcpCommand: process.env.MCP_COMMAND ?? process.execPath,
   mcpArgs: (process.env.MCP_ARGS ?? "dist/entrypoints/mcp.js").split(/\s+/).filter(Boolean),
   openaiModel: process.env.OPENAI_MODEL ?? "gpt-5.4",
+  miniAppUrl: process.env.MINIAPP_URL ?? "",
+  webPort: Number(process.env.PORT ?? process.env.MINIAPP_PORT ?? 3000),
+  miniAppDevBypass: /^(1|true|yes)$/i.test(process.env.MINIAPP_DEV_BYPASS ?? "false"),
+  telegramAuthMaxAgeSeconds: Number(process.env.TELEGRAM_AUTH_MAX_AGE_SECONDS ?? 86_400),
 };
 
 export function assertBotConfig() {

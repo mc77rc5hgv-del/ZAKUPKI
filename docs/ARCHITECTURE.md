@@ -14,11 +14,14 @@ src/
 │   └── rts/                # Playwright, сессия РТС, извлечение DOM
 ├── interfaces/             # Входящие интерфейсы
 │   ├── mcp/                # MCP tools и stdio server
-│   └── telegram/           # Telegram UI, команды, фильтры и мониторинг
+│   ├── telegram/           # Telegram UI, команды, фильтры и мониторинг
+│   └── web/                # Mini App API, static server и проверка Telegram initData
 ├── config/                 # Конфигурация процессов
 └── entrypoints/            # Минимальные composition roots
     ├── mcp.ts
-    └── telegram.ts
+    ├── telegram.ts
+    ├── web.ts              # автономный Mini App для локальной разработки
+    └── app.ts              # Mini App + Telegram bot для Railway
 ```
 
 ## Правила зависимостей
