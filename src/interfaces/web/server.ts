@@ -52,7 +52,7 @@ const routes=new Map<string,(ctx:RequestContext)=>Promise<unknown>>([
   ["POST /api/close",ctx=>platform(ctx,"rts_close")],
   ["GET /api/state",async ctx=>user(ctx.user.id)],
   ["POST /api/favorite",async ctx=>{ctx.body.action==="remove"?await removeFavorite(ctx.user.id,ctx.body.url):await addFavorite(ctx.user.id,ctx.body.url,ctx.body.title??ctx.body.url);return user(ctx.user.id).favorites;}],
-  ["POST /api/pipeline",async ctx=>setPipeline(ctx.user.id,ctx.body.url,ctx.body.title??ctx.body.url,ctx.body.stage as PipelineStage,ctx.body.note,ctx.body.deadlineAt)],
+  ["POST /api/pipeline",async ctx=>setPipeline(ctx.user.id,ctx.body.url,ctx.body.title??ctx.body.url,ctx.body.stage as PipelineStage,ctx.body.note,ctx.body.deadlineAt,ctx.body.assignee)],
   ["POST /api/profile",async ctx=>ctx.body.action==="remove"?(await removeProfile(ctx.user.id,ctx.body.id),user(ctx.user.id).profiles):addProfile(ctx.user.id,ctx.body.name,ctx.body.filter)],
   ["POST /api/watch",async ctx=>ctx.body.action==="remove"?(await removeWatch(ctx.user.id,ctx.body.id),user(ctx.user.id).watches):ctx.body.action==="toggle"?toggleWatch(ctx.user.id,ctx.body.id):addWatch(ctx.user.id,ctx.body.name,ctx.body.filter)],
 ]);
