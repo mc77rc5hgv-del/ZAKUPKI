@@ -1,0 +1,30 @@
+{
+  "name": "krd-market-rts-mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "MCP bridge for the Krasnodar RTS Market procurement portal",
+  "bin": { "krd-market-mcp": "dist/index.js" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "test": "node tests/smoke.mjs && node tests/procurement.mjs",
+    "bot": "node dist/bot/main.js",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "install-browser": "playwright install chromium"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.17.4",
+    "grammy": "^1.38.2",
+    "openai": "^5.19.1",
+    "playwright": "^1.55.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/node": "^22.17.2",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2"
+  },
+  "engines": { "node": ">=20" }
+}
