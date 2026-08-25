@@ -164,6 +164,11 @@ textarea { min-height: 96px; resize: vertical; }
 .pipeline-history summary { cursor: pointer; font-size: 12px; font-weight: 700; color: var(--muted); list-style: none; }
 .pipeline-history summary::-webkit-details-marker { display: none; }
 .pipeline-history p { margin: 4px 0 0; font-size: 12px; }
+.table-scroll { overflow-x: auto; }
+.table-scroll table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.table-scroll th, .table-scroll td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+.table-scroll th { color: var(--muted); font-weight: 700; background: var(--surface-2); }
+.range-labels { display: flex; justify-content: space-between; margin-top: 4px; font-size: 12px; color: var(--muted); }
 .connection-logo { display: grid; width: 58px; height: 58px; margin: 0 auto 14px; place-items: center; border-radius: 18px; background: var(--navy); color: #fff; box-shadow: var(--shadow); }
 .connection-logo svg { width: 30px; height: 30px; }
 .connection-hero h1 { margin: 4px 0 8px; font-size: clamp(26px, 7vw, 38px); line-height: 1.1; letter-spacing: -.035em; }
