@@ -5,30 +5,39 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#0b1220">
   <title>Закупки · Рабочий кабинет</title>
-  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/styles.css?v=2">
   <script src="https://telegram.org/js/telegram-web-app.js?63"></script>
-  <script type="module" src="/app.js"></script>
+  <script type="module" src="/app.js?v=2"></script>
 </head>
 <body>
   <a class="skip-link" href="#content">К содержимому</a>
   <div id="app" class="app-shell">
     <header class="topbar">
-      <div>
-        <p class="eyebrow">РТС-МАРКЕТ · КРАСНОДАРСКИЙ КРАЙ</p>
-        <h1 id="page-title">Обзор</h1>
+      <div class="brand-block" aria-label="Закупки — рабочий кабинет">
+        <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5v-9Z"/><path d="m4.4 7.7 7.6 4.2 7.6-4.2M12 12v9"/></svg></span>
+        <div>
+          <p class="eyebrow">ZAKUPKI · РТС-МАРКЕТ</p>
+          <h1 id="page-title">Обзор</h1>
+          <p id="page-subtitle" class="page-subtitle">Главное по закупкам и задачам</p>
+        </div>
       </div>
-      <button id="refresh" class="icon-button" type="button" aria-label="Обновить данные"></button>
+      <div class="topbar-actions">
+        <span class="connection-badge" title="Mini App подключён"><span aria-hidden="true"></span><span class="connection-label">На связи</span></span>
+        <button id="refresh" class="icon-button" type="button" aria-label="Обновить данные" title="Обновить данные"></button>
+      </div>
     </header>
     <main id="content" tabindex="-1" aria-live="polite"></main>
     <nav class="bottom-nav" aria-label="Основная навигация">
-      <button data-route="overview" aria-current="page"><span class="nav-icon" data-icon="dashboard"></span><span>Обзор</span></button>
-      <button data-route="search"><span class="nav-icon" data-icon="search"></span><span>Поиск</span></button>
-      <button data-route="work"><span class="nav-icon" data-icon="briefcase"></span><span>Работа</span></button>
-      <button data-route="analysis"><span class="nav-icon" data-icon="chart"></span><span>Анализ</span></button>
-      <button data-route="settings"><span class="nav-icon" data-icon="settings"></span><span>Система</span></button>
+      <div class="nav-brand" aria-hidden="true"><span class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5v-9Z"/><path d="m4.4 7.7 7.6 4.2 7.6-4.2M12 12v9"/></svg></span><strong>ZAKUPKI</strong></div>
+      <button data-route="overview" aria-current="page"><span class="nav-icon" data-icon="dashboard" aria-hidden="true"></span><span>Обзор</span></button>
+      <button data-route="search"><span class="nav-icon" data-icon="search" aria-hidden="true"></span><span>Поиск</span></button>
+      <button data-route="work"><span class="nav-icon" data-icon="briefcase" aria-hidden="true"></span><span>В работе</span></button>
+      <button data-route="analysis"><span class="nav-icon" data-icon="chart" aria-hidden="true"></span><span>Аналитика</span></button>
+      <button data-route="settings"><span class="nav-icon" data-icon="settings" aria-hidden="true"></span><span>Система</span></button>
+      <div class="nav-footer"><span class="status-indicator" aria-hidden="true"></span><span>Защищённая сессия</span></div>
     </nav>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <div id="loader" class="loader" hidden><span></span><p>Получаем данные площадки…</p></div>
+    <div id="loader" class="loader" hidden role="status" aria-live="polite"><div class="loader-card"><span></span><div><strong>Работаем с площадкой</strong><p>Получаем актуальные данные РТС…</p></div></div></div>
   </div>
 </body>
 </html>
