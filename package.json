@@ -4,18 +4,22 @@
   "private": true,
   "type": "module",
   "description": "MCP bridge for the Krasnodar RTS Market procurement portal",
-  "bin": { "krd-market-mcp": "dist/entrypoints/mcp.js" },
+  "bin": {
+    "krd-market-mcp": "dist/entrypoints/mcp.js"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "build:railway": "playwright install chromium && tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
-    "test": "node tests/smoke.mjs && node tests/procurement.mjs && node tests/capabilities.mjs && node tests/dossier.mjs && node tests/participation.mjs && node tests/telegram-auth.mjs && node tests/rts-access.mjs",
+    "test": "node tests/smoke.mjs && node tests/procurement.mjs && node tests/capabilities.mjs && node tests/dossier.mjs && node tests/participation.mjs && node tests/telegram-auth.mjs && node tests/rts-access.mjs && node tests/rpc-replay.mjs && node tests/connection-api.mjs && node tests/device-pairing.mjs && node tests/device-revocation.mjs && node tests/rpc-auth.mjs && node tests/user-isolation.mjs",
     "bot": "node dist/entrypoints/telegram.js",
     "start": "node dist/entrypoints/mcp.js",
     "start:mcp": "node dist/entrypoints/mcp.js",
     "start:bot": "node dist/entrypoints/telegram.js",
     "start:app": "node dist/entrypoints/app.js",
     "start:web": "node dist/entrypoints/web.js",
+    "local-agent": "node dist/entrypoints/local-agent.js",
+    "pair-device": "node scripts/pair-device.mjs",
     "deploy:check": "pnpm install --frozen-lockfile && pnpm run build && pnpm run test",
     "dev": "tsx src/entrypoints/mcp.ts",
     "install-browser": "playwright install chromium",
@@ -26,12 +30,16 @@
     "grammy": "^1.38.2",
     "openai": "^5.19.1",
     "playwright": "^1.55.0",
+    "ws": "^8.21.3",
     "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^22.17.2",
+    "@types/ws": "^8.5.13",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2"
   },
-  "engines": { "node": ">=20" }
+  "engines": {
+    "node": ">=20"
+  }
 }

@@ -2,7 +2,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { closeBrowser, getPage, open, safeDownloadPath, status } from "../../infrastructure/rts/browser.js";
+import { closeBrowser, forgetProfile, getPage, open, safeDownloadPath, status } from "../../infrastructure/rts/browser.js";
 import { config, portalUrl } from "../../infrastructure/rts/config.js";
 import { extractRequestPages, extractRequests, visibleSnapshot } from "../../infrastructure/rts/extract.js";
 import { analyzeDeterministic, filterTenders, normalizeTender } from "../../domain/procurement.js";
@@ -147,6 +147,8 @@ server.tool("rts_screenshot", "Save a screenshot of the current portal page.", {
 });
 
 server.tool("rts_close", "Close the local browser session (profile remains on disk).", {}, async () => { await closeBrowser(); return text({ closed: true }); });
+
+server.tool("rts_forget_profile", "Close the browser and permanently delete the local persistent profile directory. Requires a fresh manual login afterwards. Irreversible.", {}, async () => { try { await forgetProfile(); return text({ forgotten: true }); } catch (e) { return fail(e); } });
 
 process.on("SIGINT", async () => { await closeBrowser(); process.exit(0); });
 await server.connect(new StdioServerTransport());

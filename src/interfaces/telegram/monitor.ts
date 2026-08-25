@@ -3,13 +3,22 @@ import { call } from "../../application/mcp-client.js";
 import { allUsers, updateWatch } from "../../infrastructure/persistence/bot-store.js";
 import { clip, esc } from "./format.js";
 import { createHash } from "node:crypto";
-import { assertRtsAccess } from "../../config/bot.js";
+import { assertRtsAccess, botConfig, rtsAccess } from "../../config/bot.js";
+import { isOwnerConnected } from "../../infrastructure/agent-hub/server.js";
 
 let running = false;
 export async function monitorOnce(bot: Bot) {
   if (running) return; running = true;
   try {
-    for (const { id, data } of allUsers()) for (const watch of data.watches.filter(x=>x.enabled)) {
+    for (const { id, data } of allUsers()) {
+      const watches = data.watches.filter(x => x.enabled);
+      if (!watches.length) continue;
+      // Monitoring only ever runs for the single configured RTS account owner, and
+      // only while a local agent is actually reachable — skip quietly instead of
+      // retrying every cycle and spamming the log with the same failure.
+      if (!rtsAccess(id).isOwner) continue;
+      if (botConfig.rtsTransport === "hub" && !isOwnerConnected(id)) continue;
+      for (const watch of watches) {
       try {
         assertRtsAccess(id);
         const result = await call<{ tenders: Array<{ title: string; url: string; summary?: string; price?:number; deadlineAt?:string; score?:number }> }>("rts_search_advanced", { ...watch.filter, scanLimit: 500, resultLimit: 100 });
@@ -20,6 +29,7 @@ export async function monitorOnce(bot: Bot) {
         if(changed.length) await bot.api.sendMessage(id,clip(`📝 Изменения в закупках: «${esc(watch.name)}»\n\n${changed.slice(0,10).map(x=>`• <a href="${esc(x.url)}">${esc(x.title)}</a>`).join("\n")}`),{parse_mode:"HTML",link_preview_options:{is_disabled:true}});
         await updateWatch(id, watch.id, result.tenders.map(x => x.url),fingerprints);
       } catch (e) { console.error("monitor", id, watch.id, e); }
+      }
     }
   } finally { running = false; }
 }

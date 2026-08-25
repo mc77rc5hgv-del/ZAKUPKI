@@ -25,19 +25,29 @@ export const botConfig = {
   rtsAccountOwnerId: configuredOwner ?? (allowedUsers.size === 1 ? [...allowedUsers][0] : undefined),
   rtsHeadless: bool(process.env.RTS_HEADLESS),
   allowCloudAccountSession: bool(process.env.RTS_ALLOW_CLOUD_ACCOUNT_SESSION),
+  rtsTransport: (process.env.RTS_TRANSPORT === "hub" ? "hub" : "local") as "local" | "hub",
+  deviceDir: path.resolve(process.env.RTS_DEVICE_DIR ?? ".rts-device"),
 };
 
 export function rtsAccess(userId: number) {
   const isOwner = botConfig.rtsAccountOwnerId === userId;
-  const cloudBlocked = botConfig.rtsHeadless && !botConfig.allowCloudAccountSession;
+  const cloudBlocked = botConfig.rtsHeadless && !botConfig.allowCloudAccountSession && botConfig.rtsTransport !== "hub";
   return { isOwner, ownerConfigured: botConfig.rtsAccountOwnerId !== undefined, cloudBlocked };
 }
 
-export function assertRtsAccess(userId: number) {
+/** Requires the caller to be the configured RTS account owner. Does not gate on
+ * cloud-session policy: pairing and managing the local agent must stay reachable
+ * even while direct cloud Chromium sessions are blocked — pairing is the sanctioned
+ * alternative, not something the policy should lock users out of. */
+export function assertOwner(userId: number) {
   const access = rtsAccess(userId);
   if (!access.ownerConfigured) throw new Error("Владелец сессии РТС не настроен");
   if (!access.isOwner) throw new Error("Сессия РТС принадлежит другому пользователю");
-  if (access.cloudBlocked) throw new Error("Облачная авторизация РТС отключена политикой безопасности");
+}
+
+export function assertRtsAccess(userId: number) {
+  assertOwner(userId);
+  if (rtsAccess(userId).cloudBlocked) throw new Error("Облачная авторизация РТС отключена политикой безопасности");
 }
 
 export function assertBotConfig() {

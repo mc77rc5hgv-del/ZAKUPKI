@@ -40,6 +40,10 @@ export const helpText = `Бот работает через локальный M
 /documents URL — скачать все документы карточки
 /tables URL — извлечь таблицы карточки
 /role — рабочая роль
+/connection — статус подключения к РТС
+/devices — сопряжённые компьютеры, отзыв доступа
+/disconnect — закрыть браузер на устройстве
+/security — как устроена авторизация
 
 Формат фильтра: ключи=ноутбук, компьютер; исключить=ремонт; минцена=100000; максцена=3000000; заказчик=администрация; регион=Краснодар; окпд=26.20; дней=3-20; документы=да; сорт=срок`;
 
@@ -67,5 +71,9 @@ export const botCommands = [
   { command: "documents", description: "Скачать документы карточки" },
   { command: "tables", description: "Извлечь таблицы карточки" },
   { command: "role", description: "Рабочая роль" },
+  { command: "connection", description: "Статус подключения к РТС" },
+  { command: "devices", description: "Сопряжённые устройства" },
+  { command: "disconnect", description: "Закрыть браузер на устройстве" },
+  { command: "security", description: "Как устроена авторизация" },
   { command: "help", description: "Помощь" },
 ];

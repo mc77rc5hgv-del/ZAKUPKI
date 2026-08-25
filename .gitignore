@@ -2,6 +2,8 @@ node_modules/
 .pnpm-store/
 dist/
 .rts-profile/
+.rts-device/
+.bot-data/
 downloads/
 .rts-snapshots/
 *.log

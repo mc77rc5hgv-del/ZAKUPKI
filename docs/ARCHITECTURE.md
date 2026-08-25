@@ -7,21 +7,26 @@ src/
 ├── domain/                 # Чистые бизнес-правила закупок
 │   └── procurement.ts      # Tender, TenderFilter, нормализация, фильтрация, скоринг
 ├── application/            # Прикладные порты и сценарии
-│   └── mcp-client.ts       # Типизированный вызов инструментов MCP
+│   ├── mcp-client.ts       # Типизированный вызов инструментов MCP (local- или hub-транспорт)
+│   ├── rpc-allowlist.ts    # Список методов, разрешённых удалённому агенту
+│   └── replay-guard.ts     # Защита RPC от повторного воспроизведения (id + время)
 ├── infrastructure/         # Внешние технологии
 │   ├── ai/                 # OpenAI-анализ
-│   ├── persistence/        # Файловое хранилище пользователей
+│   ├── agent-hub/          # WebSocket-хаб: подключение локального агента, RPC-релей
+│   ├── persistence/        # Файловое хранилище пользователей и устройств
+│   ├── security/           # Хеширование кодов сопряжения и токенов устройств
 │   └── rts/                # Playwright, сессия РТС, извлечение DOM
 ├── interfaces/             # Входящие интерфейсы
 │   ├── mcp/                # MCP tools и stdio server
 │   ├── telegram/           # Telegram UI, команды, фильтры и мониторинг
-│   └── web/                # Mini App API, static server и проверка Telegram initData
+│   └── web/                # Mini App API, static server, проверка Telegram initData, WS-хаб
 ├── config/                 # Конфигурация процессов
 └── entrypoints/            # Минимальные composition roots
     ├── mcp.ts
     ├── telegram.ts
     ├── web.ts              # автономный Mini App для локальной разработки
-    └── app.ts              # Mini App + Telegram bot для Railway
+    ├── app.ts              # Mini App + Telegram bot для Railway
+    └── local-agent.ts      # процесс на компьютере владельца: RTS_TRANSPORT=hub на другом конце
 ```
 
 ## Правила зависимостей
@@ -66,7 +71,8 @@ Web/API-интерфейс добавляется рядом с Telegram в `int
 - подписание ЭП и финальная отправка всегда требуют человека;
 - URL ограничиваются origin площадки;
 - пользовательские Telegram ID задаются allowlist-переменной;
-- `.env`, профили браузера, загрузки и данные бота исключены из Git.
+- `.env`, профили браузера, загрузки, данные бота и идентификатор локального агента (`.rts-device`) исключены из Git;
+- удалённый агент (режим `RTS_TRANSPORT=hub`) аутентифицируется по токену устройства, выполняет только методы из `application/rpc-allowlist.ts` и защищён от повторного воспроизведения запросов; пароль, PIN, cookies и содержимое профиля Chromium по этому каналу не передаются.
 
 ## Дальнейшее разбиение
 

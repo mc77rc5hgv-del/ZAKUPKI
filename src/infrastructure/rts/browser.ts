@@ -65,6 +65,11 @@ export async function closeBrowser() {
   await context?.close(); context = undefined; page = undefined;
 }
 
+export async function forgetProfile() {
+  await closeBrowser();
+  await fs.rm(config.profileDir, { recursive: true, force: true });
+}
+
 export function safeDownloadPath(suggested: string): string {
   const clean = path.basename(suggested).replace(/[<>:"/\\|?*\x00-\x1f]/g, "_");
   return path.join(config.downloadDir, clean || `download-${Date.now()}`);

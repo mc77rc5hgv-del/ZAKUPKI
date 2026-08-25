@@ -1,9 +1,12 @@
 import http,{type IncomingMessage,type ServerResponse} from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { assertRtsAccess, botConfig, rtsAccess } from "../../config/bot.js";
+import { assertOwner,assertRtsAccess,botConfig,rtsAccess } from "../../config/bot.js";
 import { call } from "../../application/mcp-client.js";
 import { addFavorite,addProfile,addWatch,loadStore,removeFavorite,removeProfile,removeWatch,setPipeline,toggleWatch,user,type PipelineStage } from "../../infrastructure/persistence/bot-store.js";
+import { createPairingCode,devicesForOwner,loadDeviceStore,publicDevice,redeemPairingCode,registerDevice,revokeDevice } from "../../infrastructure/persistence/device-store.js";
+import { generateDeviceToken } from "../../infrastructure/security/pairing.js";
+import { attachAgentHub,connectedDeviceId,disconnectDevice,isOwnerConnected } from "../../infrastructure/agent-hub/server.js";
 import { validateTelegramInitData,type TelegramWebUser } from "./telegram-auth.js";
 
 type RequestContext={user:TelegramWebUser;body:Record<string,any>};
@@ -20,9 +23,14 @@ function authenticate(req:IncomingMessage){
   if(!botConfig.allowedUsers.has(auth.user.id))throw new Error("Пользователь не входит в список доступа");return auth.user;
 }
 const routes=new Map<string,(ctx:RequestContext)=>Promise<unknown>>([
-  ["GET /api/connection",async ctx=>{const access=rtsAccess(ctx.user.id);return {telegramVerified:true,accountOwner:access.isOwner,ownerConfigured:access.ownerConfigured,mode:botConfig.rtsHeadless?"cloud":"local",cloudBlocked:access.cloudBlocked,acceptsCredentials:false};}],
+  ["GET /api/connection",async ctx=>{const access=rtsAccess(ctx.user.id);return {telegramVerified:true,accountOwner:access.isOwner,ownerConfigured:access.ownerConfigured,mode:botConfig.rtsTransport==="hub"?"agent":botConfig.rtsHeadless?"cloud":"local",cloudBlocked:access.cloudBlocked,agentOnline:access.isOwner?isOwnerConnected(ctx.user.id):undefined,acceptsCredentials:false};}],
   ["POST /api/connection/open",async ctx=>{assertRtsAccess(ctx.user.id);const session=await call<any>("rts_session_status");return {opened:true,connected:Boolean(session.likelyLoggedIn&&!session.antiDdos),antiDdos:Boolean(session.antiDdos),headed:Boolean(session.headed)};}],
   ["POST /api/connection/check",async ctx=>{assertRtsAccess(ctx.user.id);const session=await call<any>("rts_session_status");return {connected:Boolean(session.likelyLoggedIn&&!session.antiDdos),antiDdos:Boolean(session.antiDdos),headed:Boolean(session.headed)};}],
+  ["POST /api/connection/disconnect",async ctx=>{assertOwner(ctx.user.id);await call("rts_close");return {disconnected:true};}],
+  ["POST /api/connection/forget",async ctx=>{assertOwner(ctx.user.id);if(ctx.body.confirm!==true)throw new Error("Требуется явное подтверждение удаления профиля");await call("rts_forget_profile");return {forgotten:true};}],
+  ["POST /api/connection/devices/pair/start",async ctx=>{assertOwner(ctx.user.id);return createPairingCode(ctx.user.id);}],
+  ["GET /api/connection/devices",async ctx=>{assertOwner(ctx.user.id);const activeDeviceId=connectedDeviceId(ctx.user.id);return devicesForOwner(ctx.user.id).map(d=>({...publicDevice(d),online:d.deviceId===activeDeviceId}));}],
+  ["POST /api/connection/devices/revoke",async ctx=>{assertOwner(ctx.user.id);const deviceId=String(ctx.body.deviceId??"");const device=await revokeDevice(ctx.user.id,deviceId);if(!device)throw new Error("Устройство не найдено");disconnectDevice(deviceId);return {revoked:true};}],
   ["POST /api/search",ctx=>platform(ctx,"rts_search_advanced")],
   ["POST /api/deadlines",ctx=>platform(ctx,"rts_deadlines")],
   ["POST /api/native-filters",ctx=>platform(ctx,"rts_apply_site_filters")],
@@ -51,20 +59,45 @@ const routes=new Map<string,(ctx:RequestContext)=>Promise<unknown>>([
 
 async function platform(ctx:RequestContext,tool:string,args:Record<string,unknown>=ctx.body){assertRtsAccess(ctx.user.id);return call(tool,args);}
 
+// Pairing a new local agent proves ownership by possessing the one-time code
+// shown in the Mini App, not by Telegram initData — the agent process is not a
+// Telegram client. This is the only /api/connection route reachable without it.
+const pairAttempts=new Map<string,number[]>();
+function pairingRateLimited(ip:string,max=20,windowMs=5*60_000){const now=Date.now();const hits=(pairAttempts.get(ip)??[]).filter(t=>now-t<windowMs);hits.push(now);pairAttempts.set(ip,hits);return hits.length>max;}
+async function handleDevicePair(req:IncomingMessage,res:ServerResponse){
+  try{
+    const ip=req.socket.remoteAddress??"unknown";
+    if(pairingRateLimited(ip))return json(res,429,{ok:false,error:{code:"RATE_LIMITED",message:"Слишком много попыток сопряжения. Повторите позже.",retryable:true}});
+    const body=await readBody(req);
+    const code=typeof body.code==="string"?body.code:"";
+    const deviceId=typeof body.deviceId==="string"?body.deviceId:"";
+    if(!code||!deviceId||deviceId.length>128||code.length>64)return json(res,400,{ok:false,error:{code:"BAD_REQUEST",message:"Некорректные параметры сопряжения",retryable:false}});
+    const redeemed=await redeemPairingCode(code);
+    if(!redeemed)return json(res,400,{ok:false,error:{code:"PAIRING_CODE_INVALID",message:"Код сопряжения недействителен или истёк",retryable:false}});
+    const token=generateDeviceToken();
+    await registerDevice({deviceId,ownerTelegramId:redeemed.ownerTelegramId,token,displayName:typeof body.displayName==="string"?body.displayName:undefined,agentVersion:typeof body.agentVersion==="string"?body.agentVersion:undefined});
+    return json(res,200,{ok:true,data:{deviceId,ownerTelegramId:redeemed.ownerTelegramId,accessToken:token}});
+  }catch(error){console.error("device pairing failed",error instanceof Error?error.name:"Error");return json(res,400,{ok:false,error:{code:"PAIRING_FAILED",message:"Не удалось выполнить сопряжение",retryable:true}});}
+}
+
 function publicError(error:unknown){
   const message=error instanceof Error?error.message:String(error);
   if(/владелец|принадлежит другому|облачная авторизация/i.test(message))return message;
   if(/Telegram|подпись|список доступа|сессия Telegram/i.test(message))return message;
+  if(/устройств|подтверждени/i.test(message))return message;
   return "Операция не выполнена. Проверьте подключение к РТС и повторите попытку.";
 }
 
 export async function startWebServer(){
   await loadStore();
+  await loadDeviceStore();
   const server=http.createServer(async(req,res)=>{try{
     const url=new URL(req.url??"/","http://local");if(url.pathname==="/health")return json(res,200,{ok:true,service:"zakupki-miniapp"});
+    if(req.method==="POST"&&url.pathname==="/api/connection/devices/pair")return handleDevicePair(req,res);
     if(url.pathname.startsWith("/api/")){const user=authenticate(req);const handler=routes.get(`${req.method} ${url.pathname}`);if(!handler)return json(res,404,{error:"Маршрут не найден"});const body=req.method==="POST"?await readBody(req):{};return json(res,200,{ok:true,data:await handler({user,body})});}
     if(await serveStatic(req,res))return;json(res,404,{error:"Страница не найдена"});
   }catch(error){console.error("web request failed",req.method,new URL(req.url??"/","http://local").pathname,error instanceof Error?error.name:"Error");json(res,/доступ|подпись|Telegram|сессия|владелец|принадлежит|авторизация/i.test(String(error))?401:400,{ok:false,error:publicError(error)});}});
+  attachAgentHub(server);
   await new Promise<void>((resolve,reject)=>{server.once("error",reject);server.listen(botConfig.webPort,"0.0.0.0",()=>resolve());});
   console.log(`Mini App listening on 0.0.0.0:${botConfig.webPort}`);return server;
 }
