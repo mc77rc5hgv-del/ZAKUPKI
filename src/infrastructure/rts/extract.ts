@@ -1,5 +1,5 @@
 import type { Page } from "playwright";
-import type { RawRequest } from "./procurement.js";
+import type { RawRequest } from "../../domain/procurement.js";
 
 export async function visibleSnapshot(page: Page) {
   return page.locator("body").evaluate((body) => {

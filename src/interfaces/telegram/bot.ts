@@ -1,11 +1,12 @@
 import { Bot, InlineKeyboard } from "grammy";
-import { assertBotConfig, botConfig } from "./config.js";
-import { addFavorite, addProfile, addWatch, loadStore, removeFavorite, removeProfile, removeWatch, setPipeline, setRole, toggleWatch, user, type PipelineStage } from "./store.js";
-import { call, closeMcp } from "./mcp.js";
-import { analyzeTender } from "./analysis.js";
+import { assertBotConfig, botConfig } from "../../config/bot.js";
+import { addFavorite, addProfile, addWatch, loadStore, removeFavorite, removeProfile, removeWatch, setPipeline, setRole, toggleWatch, user, type PipelineStage } from "../../infrastructure/persistence/bot-store.js";
+import { call, closeMcp } from "../../application/mcp-client.js";
+import { analyzeTender } from "../../infrastructure/ai/tender-analysis.js";
 import { clip, esc, requestList, tenderList } from "./format.js";
 import { monitorOnce } from "./monitor.js";
 import { describeFilter, parseFilter } from "./filters.js";
+import { botCommands, helpText, mainMenu } from "./ui.js";
 
 assertBotConfig(); await loadStore();
 const bot = new Bot(botConfig.token);
@@ -18,11 +19,9 @@ bot.use(async (ctx, next) => {
   if (!id || !botConfig.allowedUsers.has(id)) { if (ctx.message) await ctx.reply("Доступ запрещён. Ваш Telegram ID не внесён в TELEGRAM_ALLOWED_USERS."); return; }
   await next();
 });
-const menu = () => new InlineKeyboard().text("🔎 Поиск", "search").text("🎛 Фильтры", "filters").row().text("📄 Карточка", "card").text("🧠 Анализ", "analyze").row().text("⭐ Избранное", "favorites").text("🔔 Мониторинг", "watches").row().text("📋 Воронка", "pipeline").text("⏰ Дедлайны", "deadlines").row().text("🔐 Сессия РТС", "session").text("👤 Роль", "role").row().text("ℹ️ Помощь", "help");
-const help = `Бот работает через локальный MCP-мост РТС.\n\n/search текст — простой поиск\n/filter имя | параметры — сохранить сложный фильтр\n/filters — профили фильтров\n/deadlines 14 — ближайшие сроки\n/card URL — карточка\n/analyze URL — анализ рисков\n/watch текст — простой мониторинг\n/watchfilter ID — мониторинг по профилю\n/favorites — избранное\n/queue — рабочая воронка\n/stage стадия URL — изменить стадию\n/session — состояние площадки\n/role — рабочая роль\n\nФормат фильтра: ключи=ноутбук, компьютер; исключить=ремонт; минцена=100000; максцена=3000000; заказчик=администрация; регион=Краснодар; окпд=26.20; дней=3-20; документы=да; сорт=срок`;
 
-bot.command("start", ctx => ctx.reply("Помощник по закупкам Краснодарского края готов.", { reply_markup: menu() }));
-bot.command("help", ctx => ctx.reply(help, { reply_markup: menu() }));
+bot.command("start", ctx => ctx.reply("Помощник по закупкам Краснодарского края готов.", { reply_markup: mainMenu() }));
+bot.command("help", ctx => ctx.reply(helpText, { reply_markup: mainMenu() }));
 bot.command("session", async ctx => ctx.reply(clip(JSON.stringify(await call("rts_session_status"), null, 2))));
 bot.command("role", ctx => ctx.reply("Выберите рабочую роль:", { reply_markup: new InlineKeyboard().text("Заказчик / оператор", "role:operator").text("Участник", "role:participant") }));
 bot.command("search", async ctx => runSearch(ctx, ctx.match.trim()));
@@ -46,7 +45,7 @@ bot.callbackQuery("watch:add", async ctx => { pending.set(ctx.from.id,"watch"); 
 bot.callbackQuery("favorites", async ctx => { await ctx.answerCallbackQuery(); await showFavorites(ctx); });
 bot.callbackQuery("session", async ctx => { await ctx.answerCallbackQuery(); await ctx.reply(clip(JSON.stringify(await call("rts_session_status"),null,2))); });
 bot.callbackQuery("role", async ctx => { await ctx.answerCallbackQuery(); await ctx.reply("Выберите роль:",{reply_markup:new InlineKeyboard().text("Оператор", "role:operator").text("Участник", "role:participant")}); });
-bot.callbackQuery("help", async ctx => { await ctx.answerCallbackQuery(); await ctx.reply(help); });
+bot.callbackQuery("help", async ctx => { await ctx.answerCallbackQuery(); await ctx.reply(helpText); });
 bot.callbackQuery("filters", async ctx=>{await ctx.answerCallbackQuery();await showFilters(ctx);});
 bot.callbackQuery("pipeline", async ctx=>{await ctx.answerCallbackQuery();await showPipeline(ctx);});
 bot.callbackQuery("deadlines", async ctx=>{await ctx.answerCallbackQuery();await showDeadlines(ctx,14);});
@@ -93,7 +92,7 @@ async function setStageCommand(ctx:any,input:string){const stages:PipelineStage[
 async function showPipeline(ctx:any){const rows=Object.values(user(ctx.from.id).pipeline).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));if(!rows.length)return ctx.reply("Воронка пуста. Добавьте: /stage review URL первичная проверка");const groups=rows.reduce<Record<string,typeof rows>>((a,x)=>{(a[x.stage]??=[]).push(x);return a;},{});await ctx.reply(clip(Object.entries(groups).map(([stage,items])=>`<b>${stage}</b>\n${items.map(x=>`• <a href="${esc(x.url)}">${esc(x.title)}</a>${x.note?` — ${esc(x.note)}`:""}`).join("\n")}`).join("\n\n")),{parse_mode:"HTML",link_preview_options:{is_disabled:true}});}
 async function runDigest(ctx:any){const profiles=user(ctx.from.id).profiles;if(!profiles.length)return ctx.reply("Сначала создайте хотя бы один профиль /filter");for(const p of profiles.slice(0,10))await runAdvanced(ctx,p.filter,p.name);}
 
-await bot.api.setMyCommands([{command:"search",description:"Поиск закупок"},{command:"filter",description:"Создать сложный фильтр"},{command:"filters",description:"Профили фильтров"},{command:"deadlines",description:"Ближайшие сроки"},{command:"digest",description:"Дайджест по профилям"},{command:"card",description:"Карточка закупки"},{command:"analyze",description:"AI-анализ рисков"},{command:"watch",description:"Мониторинг новых закупок"},{command:"queue",description:"Рабочая воронка"},{command:"favorites",description:"Избранное"},{command:"session",description:"Состояние РТС"},{command:"role",description:"Рабочая роль"},{command:"help",description:"Помощь"}]);
+await bot.api.setMyCommands(botCommands);
 setInterval(() => void monitorOnce(bot), botConfig.monitorIntervalMs).unref();
 process.once("SIGINT",async()=>{await closeMcp();bot.stop();}); process.once("SIGTERM",async()=>{await closeMcp();bot.stop();});
 console.log("KRD Market Telegram bot started"); await bot.start();

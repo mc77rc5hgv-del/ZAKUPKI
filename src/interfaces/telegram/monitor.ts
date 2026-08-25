@@ -1,6 +1,6 @@
 import type { Bot } from "grammy";
-import { call } from "./mcp.js";
-import { allUsers, updateWatch } from "./store.js";
+import { call } from "../../application/mcp-client.js";
+import { allUsers, updateWatch } from "../../infrastructure/persistence/bot-store.js";
 import { clip, esc } from "./format.js";
 import { createHash } from "node:crypto";
 

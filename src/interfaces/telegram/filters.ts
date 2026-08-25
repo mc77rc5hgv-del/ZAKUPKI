@@ -1,4 +1,4 @@
-import type { TenderFilter } from "../procurement.js";
+import type { TenderFilter } from "../../domain/procurement.js";
 
 const list = (v: string) => v.split(/[,|]/).map(x=>x.trim()).filter(Boolean);
 const number = (v:string) => { const n=Number(v.replace(/[\s_]/g,"")); return Number.isFinite(n)?n:undefined; };

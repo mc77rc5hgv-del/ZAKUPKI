@@ -1,6 +1,6 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { botConfig } from "./config.js";
+import { botConfig } from "../config/bot.js";
 
 let client: Client | undefined;
 export async function mcp() {

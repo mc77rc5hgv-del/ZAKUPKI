@@ -4,14 +4,14 @@
   "private": true,
   "type": "module",
   "description": "MCP bridge for the Krasnodar RTS Market procurement portal",
-  "bin": { "krd-market-mcp": "dist/index.js" },
+  "bin": { "krd-market-mcp": "dist/entrypoints/mcp.js" },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "node tests/smoke.mjs && node tests/procurement.mjs",
-    "bot": "node dist/bot/main.js",
-    "start": "node dist/index.js",
-    "dev": "tsx src/index.ts",
+    "bot": "node dist/entrypoints/telegram.js",
+    "start": "node dist/entrypoints/mcp.js",
+    "dev": "tsx src/entrypoints/mcp.ts",
     "install-browser": "playwright install chromium"
   },
   "dependencies": {

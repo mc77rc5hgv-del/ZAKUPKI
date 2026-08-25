@@ -1,12 +1,11 @@
 #!/usr/bin/env node
-import fs from "node:fs/promises";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { closeBrowser, getPage, open, safeDownloadPath, status } from "./browser.js";
-import { config, portalUrl } from "./config.js";
-import { extractRequestPages, extractRequests, visibleSnapshot } from "./extract.js";
-import { analyzeDeterministic, filterTenders, normalizeTender } from "./procurement.js";
+import { closeBrowser, getPage, open, safeDownloadPath, status } from "../../infrastructure/rts/browser.js";
+import { config, portalUrl } from "../../infrastructure/rts/config.js";
+import { extractRequestPages, extractRequests, visibleSnapshot } from "../../infrastructure/rts/extract.js";
+import { analyzeDeterministic, filterTenders, normalizeTender } from "../../domain/procurement.js";
 
 const server = new McpServer({ name: "krd-market-rts", version: "0.1.0" });
 const text = (value: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }] });

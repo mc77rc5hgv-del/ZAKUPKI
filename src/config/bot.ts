@@ -9,7 +9,7 @@ export const botConfig = {
   dataDir: path.resolve(process.env.BOT_DATA_DIR ?? ".bot-data"),
   monitorIntervalMs: Math.max(1, Number(process.env.MONITOR_INTERVAL_MINUTES ?? 15)) * 60_000,
   mcpCommand: process.env.MCP_COMMAND ?? process.execPath,
-  mcpArgs: (process.env.MCP_ARGS ?? "dist/index.js").split(/\s+/).filter(Boolean),
+  mcpArgs: (process.env.MCP_ARGS ?? "dist/entrypoints/mcp.js").split(/\s+/).filter(Boolean),
   openaiModel: process.env.OPENAI_MODEL ?? "gpt-5.4",
 };
 

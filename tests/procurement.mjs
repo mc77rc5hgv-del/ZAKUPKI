@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { analyzeDeterministic, filterTenders, normalizeTender } from "../dist/procurement.js";
-import { parseFilter } from "../dist/bot/filters.js";
+import { analyzeDeterministic, filterTenders, normalizeTender } from "../dist/domain/procurement.js";
+import { parseFilter } from "../dist/interfaces/telegram/filters.js";
 
 const now = new Date("2026-08-25T09:00:00+03:00");
 const tender = normalizeTender({

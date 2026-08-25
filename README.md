@@ -2,6 +2,8 @@
 
 Локальный MCP-сервер связывает AI-клиент с разделом запросов `krd-market.rts-tender.ru`. Он работает через постоянный Chromium-профиль, поэтому поддерживает страницы, требующие JavaScript, ручной вход, ЭП и Anti‑DDoS-проверку.
 
+Архитектура и правила расширения описаны в [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
+
 ## Возможности
 
 - открытие публичного списка и карточек запросов;
@@ -29,7 +31,7 @@ npm run build
   "mcpServers": {
     "krd-market-rts": {
       "command": "node",
-      "args": ["C:/absolute/path/to/krd-market-rts-mcp/dist/index.js"],
+      "args": ["C:/absolute/path/to/krd-market-rts-mcp/dist/entrypoints/mcp.js"],
       "env": {
         "RTS_HEADLESS": "false",
         "RTS_PROFILE_DIR": "C:/absolute/path/to/private/rts-profile",

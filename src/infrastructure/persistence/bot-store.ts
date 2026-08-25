@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { botConfig } from "./config.js";
-import type { TenderFilter } from "../procurement.js";
+import { botConfig } from "../../config/bot.js";
+import type { TenderFilter } from "../../domain/procurement.js";
 
 export type Watch = { id: string; name: string; filter: TenderFilter; enabled: boolean; createdAt: string; lastUrls: string[]; fingerprints: Record<string, string> };
 export type FilterProfile = { id: string; name: string; filter: TenderFilter; createdAt: string };
