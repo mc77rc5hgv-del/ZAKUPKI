@@ -121,7 +121,8 @@ textarea { min-height: 96px; resize: vertical; }
 .toast.show { opacity: 1; transform: translateY(0); }
 .loader { position: fixed; z-index: 60; inset: 0; display: grid; padding: 20px; place-items: center; background: color-mix(in srgb, var(--bg) 78%, transparent); backdrop-filter: blur(6px); }
 .loader[hidden] { display: none; }
-.loader-card { display: flex; align-items: center; gap: 14px; width: min(100%, 360px); padding: 18px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface-raised); box-shadow: var(--shadow); }
+.loader-card { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; width: min(100%, 360px); padding: 18px; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface-raised); box-shadow: var(--shadow); }
+.loader-card #loader-cancel { flex: 0 0 100%; }
 .loader-card > span { flex: 0 0 auto; width: 34px; height: 34px; border: 3px solid var(--line); border-top-color: var(--primary); border-radius: 50%; animation: spin .8s linear infinite; }
 .loader-card strong { display: block; }
 .loader-card p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
@@ -153,6 +154,13 @@ textarea { min-height: 96px; resize: vertical; }
 .status-pill.ok { color: var(--success); }
 .status-pill.warn { color: var(--danger); border-color: var(--danger-soft); background: var(--danger-soft); }
 .status-pill.warn .button { margin-left: 2px; }
+.preset-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.filters-advanced summary { display: flex; align-items: center; gap: 8px; padding: 10px 2px; cursor: pointer; font-weight: 800; color: var(--text); list-style: none; }
+.filters-advanced summary::-webkit-details-marker { display: none; }
+.filters-advanced summary::before { content: "›"; display: inline-block; transition: transform var(--duration-fast); font-size: 18px; line-height: 1; color: var(--muted); }
+.filters-advanced[open] summary::before { transform: rotate(90deg); }
+.filters-advanced #filters-count { min-width: 20px; justify-content: center; }
+.result-list > .load-more { grid-column: 1 / -1; }
 .connection-logo { display: grid; width: 58px; height: 58px; margin: 0 auto 14px; place-items: center; border-radius: 18px; background: var(--navy); color: #fff; box-shadow: var(--shadow); }
 .connection-logo svg { width: 30px; height: 30px; }
 .connection-hero h1 { margin: 4px 0 8px; font-size: clamp(26px, 7vw, 38px); line-height: 1.1; letter-spacing: -.035em; }
