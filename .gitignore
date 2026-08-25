@@ -3,5 +3,6 @@ node_modules/
 dist/
 .rts-profile/
 downloads/
+.rts-snapshots/
 *.log
 .env

@@ -3,6 +3,7 @@ import { InlineKeyboard } from "grammy";
 export const mainMenu = () => new InlineKeyboard()
   .text("🔎 Поиск", "search").text("🎛 Фильтры", "filters").row()
   .text("📄 Карточка", "card").text("🧠 Анализ", "analyze").row()
+  .text("🗂 Досье", "dossier").text("📝 Черновик", "drafthelp").row()
   .text("⭐ Избранное", "favorites").text("🔔 Мониторинг", "watches").row()
   .text("📋 Воронка", "pipeline").text("⏰ Дедлайны", "deadlines").row()
   .text("🧭 Кабинет РТС", "workspace").text("🛠 Фильтры сайта", "sitefilters").row()
@@ -17,6 +18,10 @@ export const helpText = `Бот работает через локальный M
 /deadlines 14 — ближайшие сроки
 /card URL — карточка
 /analyze URL — анализ рисков
+/dossier URL — полное досье закупки
+/track URL — сохранить снимок и найти изменения
+/compare URL1 URL2 — сравнить закупки
+/draft URL | цена=...; количество=...; поставка=... — план черновика предложения
 /watch текст — простой мониторинг
 /watchfilter ID — мониторинг по профилю
 /favorites — избранное
@@ -39,6 +44,10 @@ export const botCommands = [
   { command: "digest", description: "Дайджест по профилям" },
   { command: "card", description: "Карточка закупки" },
   { command: "analyze", description: "AI-анализ рисков" },
+  { command: "dossier", description: "Полное досье закупки" },
+  { command: "track", description: "Контроль изменений карточки" },
+  { command: "compare", description: "Сравнить две закупки" },
+  { command: "draft", description: "Черновик ценового предложения" },
   { command: "watch", description: "Мониторинг новых закупок" },
   { command: "queue", description: "Рабочая воронка" },
   { command: "favorites", description: "Избранное" },

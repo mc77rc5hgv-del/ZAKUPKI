@@ -7,6 +7,9 @@ import { config, portalUrl } from "../../infrastructure/rts/config.js";
 import { extractRequestPages, extractRequests, visibleSnapshot } from "../../infrastructure/rts/extract.js";
 import { analyzeDeterministic, filterTenders, normalizeTender } from "../../domain/procurement.js";
 import { applySemanticFilters, inspectPortal } from "../../infrastructure/rts/inventory.js";
+import { buildDossier, trackDossier } from "../../infrastructure/rts/dossier.js";
+import { compareDossiers } from "../../domain/dossier.js";
+import { prepareOfferDraft } from "../../infrastructure/rts/offer-draft.js";
 
 const server = new McpServer({ name: "krd-market-rts", version: "0.1.0" });
 const text = (value: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }] });
@@ -93,6 +96,14 @@ server.tool("rts_get_request", "Open a same-origin request card and extract its 
     return text({ url: p.url(), title: await p.title(), text: snap.text, documents });
   } catch (e) { return fail(e); }
 });
+
+server.tool("rts_build_dossier", "Build a complete machine-readable tender dossier: normalized fields, deterministic analysis, documents, tables, capabilities and content fingerprint.",{url:z.string()},async({url})=>{try{const p=await open(url);return text(await buildDossier(p));}catch(e){return fail(e);}});
+
+server.tool("rts_track_request", "Capture the current tender dossier, persist a local snapshot and report material changes since the previous capture.",{url:z.string()},async({url})=>{try{const p=await open(url);const dossier=await buildDossier(p);return text({dossier,tracking:await trackDossier(dossier)});}catch(e){return fail(e);}});
+
+server.tool("rts_compare_requests", "Compare two tender cards by normalized commercial fields, deadlines, documents and content.",{firstUrl:z.string(),secondUrl:z.string()},async({firstUrl,secondUrl})=>{try{const p=await open(firstUrl);const first=await buildDossier(p);await open(secondUrl);const second=await buildDossier(p);return text({first,second,comparison:compareDossiers(first,second)});}catch(e){return fail(e);}});
+
+server.tool("rts_prepare_offer_draft", "Preview or fill a price-offer draft in the current request form. Never submits, signs or publishes the offer.",{url:z.string(),price:z.number().positive(),quantity:z.number().positive().optional(),deliveryDays:z.number().int().nonnegative().optional(),validityDays:z.number().int().positive().optional(),comment:z.string().max(10000).optional(),execute:z.boolean().default(false),confirm:z.boolean().default(false)},async({url,execute,confirm,...draft})=>{try{if(execute&&(!config.allowWrites||!confirm))throw new Error("Draft execution is disabled. Set RTS_ALLOW_WRITES=true and pass confirm=true. Preview with execute=false first.");const p=await open(url);return text(await prepareOfferDraft(p,draft,execute));}catch(e){return fail(e);}});
 
 server.tool("rts_extract_tables", "Extract visible tables from a same-origin RTS page as structured rows.", {url:z.string()},async({url})=>{try{const p=await open(url);const inventory=await inspectPortal(p);return text({url:p.url(),title:inventory.title,tables:inventory.tables});}catch(e){return fail(e);}});
 

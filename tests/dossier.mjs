@@ -1,0 +1,13 @@
+import assert from "node:assert/strict";
+import { compareDossiers, fingerprintDossier } from "../dist/domain/dossier.js";
+import { validateOfferDraft } from "../dist/domain/offer-draft.js";
+const tender={title:"Ноутбуки",url:"https://krd-market.rts-tender.ru/zapros/1",summary:"",currency:"RUB",okpd2:[],hasDocuments:true,matched:[],warnings:[],price:100000,deadlineAt:"2026-09-01T09:00:00.000Z"};
+const base={url:tender.url,title:tender.title,text:"Карточка",tender,analysis:{},documents:[{name:"ТЗ.pdf",url:`${tender.url}/file`}],tables:[],capabilities:[]};
+const before={...base,capturedAt:"2026-08-25T00:00:00Z",fingerprint:fingerprintDossier(base)};
+const changedBase={...base,tender:{...tender,price:90000}};
+const after={...changedBase,capturedAt:"2026-08-26T00:00:00Z",fingerprint:fingerprintDossier(changedBase)};
+const diff=compareDossiers(before,after);
+assert.equal(diff.changed,true);assert.ok(diff.changes.some(x=>x.field==="price"&&x.severity==="critical"));
+assert.equal(validateOfferDraft({price:1000,quantity:2}).valid,true);
+assert.equal(validateOfferDraft({price:-1}).valid,false);
+console.log("dossier and offer draft: ok");

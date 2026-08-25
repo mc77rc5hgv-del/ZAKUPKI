@@ -9,6 +9,7 @@ export const config = {
   allowWrites: bool(process.env.RTS_ALLOW_WRITES, false),
   profileDir: path.resolve(process.env.RTS_PROFILE_DIR ?? ".rts-profile"),
   downloadDir: path.resolve(process.env.RTS_DOWNLOAD_DIR ?? "downloads"),
+  snapshotDir: path.resolve(process.env.RTS_SNAPSHOT_DIR ?? ".rts-snapshots"),
   timeoutMs: Number(process.env.RTS_TIMEOUT_MS ?? 30_000),
 };
 
