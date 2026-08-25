@@ -42,32 +42,53 @@ function pairingPanelHtml(pairing){if(!pairing)return"";return`<div class="pairi
 function deviceRow(d){const status=d.revokedAt?"blocked":d.online?"ready":"check";const label=d.revokedAt?"Отозвано":d.online?"В сети":"Не в сети";return`<div class="check"><span class="status-dot ${status}"></span><div><h3>${esc(d.displayName)}</h3><p>${label}${d.agentVersion?` · версия ${esc(d.agentVersion)}`:""} · последняя активность: ${d.lastSeenAt?esc(dateTime(d.lastSeenAt)):"—"}</p>${d.revokedAt?"":`<div class="button-row"><button class="button secondary compact danger-text" data-device-revoke="${esc(d.deviceId)}">Отозвать</button></div>`}</div></div>`}
 async function loadDevices(){state.devices=await api("connection/devices",null,"GET");return state.devices}
 function devicesSectionHtml(devices){return`<section class="card"><h2>Подключённые компьютеры</h2>${devices.length?devices.map(deviceRow).join(""):'<p class="muted">Устройств пока нет.</p>'}<div class="button-row device-actions"><button class="button secondary" data-connection="pair">Подключить компьютер</button></div>${pairingPanelHtml(state.pairing)}</section>`}
+// One entry per state named in the spec (section 10): title/explanation/role are
+// looked up here, primary/secondary actions are rendered per-state below since a
+// few states need bespoke action pairs (pairing vs. open/check). Diagnostic code
+// shown to the user is the state key itself — never a raw error or path.
+const CONNECTION_STATES={
+  checking:{title:"Проверяем сессию",text:"Уточняем состояние подключения к Telegram и РТС.",role:"status"},
+  owner_not_configured:{title:"Владелец не настроен",text:"Администратору нужно указать владельца браузерного профиля в конфигурации сервиса (RTS_ACCOUNT_OWNER_ID).",role:"alert"},
+  not_owner:{title:"Сессия закреплена за другим пользователем",text:"Этот профиль РТС привязан к другому Telegram ID и недоступен вам.",role:"alert"},
+  cloud_blocked:{title:"Облачный вход отключён",text:"Политика безопасности запрещает прямую облачную авторизацию. Подключите локальный компьютер или обратитесь к администратору.",role:"alert"},
+  agent_offline:{title:"Компьютер не подключён",text:"Сопрягите компьютер, на котором будет работать браузер РТС.",role:"status"},
+  anti_ddos:{title:"Проверка Anti-DDoS",text:"Завершите проверку в открытом браузере, затем вернитесь и проверьте подключение.",role:"status"},
+  login_required:{title:"Ожидает входа",text:"",role:"status"},
+  connected:{title:"Подключение защищено",text:"Сессия РТС распознана. Рабочий кабинет готов.",role:"status"},
+  connection_error:{title:"Ошибка подключения",text:"",role:"alert"},
+};
+function resolveConnectionState(info,status){
+  if(!info)return"checking";
+  if(!info.ownerConfigured)return"owner_not_configured";
+  if(!info.accountOwner)return"not_owner";
+  if(status.kind==="connected")return"connected";
+  if(status.kind==="error")return"connection_error";
+  if(info.cloudBlocked)return"cloud_blocked";
+  if(info.mode==="agent"&&!info.agentOnline)return"agent_offline";
+  if(status.kind==="anti_ddos")return"anti_ddos";
+  return"login_required";
+}
 function connectionView(info,status={kind:"idle",message:""}){
-  const blocked=!info.accountOwner||!info.ownerConfigured||info.cloudBlocked;
+  const stateKey=resolveConnectionState(info,status);
+  const meta=CONNECTION_STATES[stateKey];
+  info=info||{};
   const isAgentMode=info.mode==="agent";
   const agentOnline=Boolean(info.agentOnline);
-  const connected=status.kind==="connected";
-  const needsPairing=isAgentMode&&!agentOnline&&!blocked;
-  const canLogin=!blocked&&!connected&&(!isAgentMode||agentOnline);
+  const connected=stateKey==="connected";
   document.body.classList.add("connection-mode");
   const steps=[{label:"Telegram",done:true},{label:"Устройство",done:!isAgentMode||agentOnline},{label:"РТС",done:connected}];
   let activeAssigned=false;
   const stepsHtml=steps.map(s=>{let cls=s.done?"done":"";if(!s.done&&!activeAssigned){cls="active";activeAssigned=true}return`<li class="${cls}"><span class="step-dot" aria-hidden="true"></span>${esc(s.label)}</li>`}).join("");
-  const statusTitle=connected?"Подключение защищено":blocked?"Подключение ограничено":needsPairing?"Компьютер не подключён":"Ожидает входа";
-  const statusText=connected?"Сессия РТС распознана. Рабочий кабинет готов."
-    :!info.ownerConfigured?"Укажите владельца браузерного профиля в конфигурации."
-    :!info.accountOwner?"Этот профиль РТС закреплён за другим Telegram-пользователем."
-    :info.cloudBlocked?"Облачная авторизация аккаунта отключена политикой безопасности."
-    :needsPairing?"Сопрягите компьютер, на котором будет работать браузер РТС."
-    :isAgentMode?"Компьютер на связи. Войдите в аккаунт в открытом на нём браузере, затем проверьте подключение здесь.":"Откройте РТС на доверенном компьютере и войдите вручную.";
-  const actionsHtml=connected?'<button class="button connection-primary" data-connection="enter">Перейти в рабочий кабинет</button>'
-    :needsPairing?`<button class="button connection-primary" data-connection="pair">${state.pairing?"Обновить код":"Подключить компьютер"}</button>${state.pairing?'<button class="button secondary" data-connection="check-agent">Проверить агент</button>':""}`
-    :canLogin?'<button class="button connection-primary" data-connection="open">Открыть РТС для входа</button><button class="button secondary" data-connection="check">Проверить подключение</button>'
-    :'<button class="button secondary" data-connection="refresh">Проверить конфигурацию</button>';
-  content.innerHTML=`<section class="connection-shell"><div class="connection-hero"><ol class="connection-steps" aria-label="Шаги подключения">${stepsHtml}</ol><span class="connection-logo" aria-hidden="true">${connectionIcon.shield}</span><p class="eyebrow">ЗАЩИЩЁННЫЙ ВХОД</p><h1>Подключение к РТС-Маркет</h1><p>Перед началом работы проверим личную браузерную сессию. Данные входа никогда не передаются в Mini App.</p></div><div class="connection-layout"><article class="card connection-card"><div class="connection-status ${connected?'is-connected':blocked?'is-blocked':''}"><span aria-hidden="true"></span><div><strong>${statusTitle}</strong><p>${statusText}</p></div></div>${status.message?`<div class="connection-message ${status.kind==='error'?'error':''}" role="status">${esc(status.message)}</div>`:""}${needsPairing?pairingPanelHtml(state.pairing):""}<div class="connection-actions">${actionsHtml}</div></article><aside class="card privacy-card"><h2>Как защищены данные</h2><div class="privacy-item"><span aria-hidden="true">${connectionIcon.user}</span><div><strong>Проверка Telegram</strong><p>Каждый API-запрос подписан Telegram и разрешён только владельцу сессии.</p></div></div><div class="privacy-item"><span aria-hidden="true">${connectionIcon.device}</span><div><strong>Авторизация на вашем устройстве</strong><p>Логин, пароль, CAPTCHA, SMS-коды и PIN ЭП вводятся только в отдельном окне браузера.</p></div></div><div class="privacy-item"><span aria-hidden="true">${connectionIcon.shield}</span><div><strong>Изоляция профиля</strong><p>Один браузерный профиль закреплён за одним Telegram ID. Mini App не читает и не сохраняет секреты.</p></div></div></aside></div><p class="connection-footnote">Никогда не отправляйте пароль, код подтверждения или PIN электронной подписи в Telegram-чат или формы Mini App.</p></section>`;
+  const statusText=meta.text||status.message||"";
+  const actionsHtml=stateKey==="connected"?'<button class="button connection-primary" data-connection="enter">Перейти в рабочий кабинет</button>'
+    :stateKey==="agent_offline"?`<button class="button connection-primary" data-connection="pair">${state.pairing?"Обновить код":"Подключить компьютер"}</button>${state.pairing?'<button class="button secondary" data-connection="check-agent">Проверить агент</button>':""}`
+    :stateKey==="login_required"?'<button class="button connection-primary" data-connection="open">Открыть РТС для входа</button><button class="button secondary" data-connection="check">Проверить подключение</button>'
+    :stateKey==="anti_ddos"?'<button class="button connection-primary" data-connection="check">Проверить подключение</button>'
+    :stateKey==="checking"?"":'<button class="button secondary" data-connection="refresh">Проверить конфигурацию</button>';
+  content.innerHTML=`<section class="connection-shell"><div class="connection-hero"><ol class="connection-steps" aria-label="Шаги подключения">${stepsHtml}</ol><span class="connection-logo" aria-hidden="true">${connectionIcon.shield}</span><p class="eyebrow">ЗАЩИЩЁННЫЙ ВХОД</p><h1>Подключение к РТС-Маркет</h1><p>Перед началом работы проверим личную браузерную сессию. Данные входа никогда не передаются в Mini App.</p></div><div class="connection-layout"><article class="card connection-card"><div class="connection-status ${connected?'is-connected':meta.role==='alert'?'is-blocked':''}" role="${meta.role}"><span aria-hidden="true"></span><div><strong>${esc(meta.title)}</strong><p>${esc(statusText)}</p></div></div>${stateKey==="agent_offline"?pairingPanelHtml(state.pairing):""}<div class="connection-actions">${actionsHtml}</div><p class="connection-diagnostic">Код: ${esc(stateKey.toUpperCase())}</p></article><aside class="card privacy-card"><h2>Как защищены данные</h2><div class="privacy-item"><span aria-hidden="true">${connectionIcon.user}</span><div><strong>Проверка Telegram</strong><p>Каждый API-запрос подписан Telegram и разрешён только владельцу сессии.</p></div></div><div class="privacy-item"><span aria-hidden="true">${connectionIcon.device}</span><div><strong>Авторизация на вашем устройстве</strong><p>Логин, пароль, CAPTCHA, SMS-коды и PIN ЭП вводятся только в отдельном окне браузера.</p></div></div><div class="privacy-item"><span aria-hidden="true">${connectionIcon.shield}</span><div><strong>Изоляция профиля</strong><p>Один браузерный профиль закреплён за одним Telegram ID. Mini App не читает и не сохраняет секреты.</p></div></div></aside></div><p class="connection-footnote">Никогда не отправляйте пароль, код подтверждения или PIN электронной подписи в Telegram-чат или формы Mini App.</p></section>`;
   content.focus({preventScroll:true});
 }
-async function loadConnection(){try{state.connection=await api("connection",null,"GET");if(state.connection.agentOnline)state.pairing=null;connectionView(state.connection)}catch(error){document.body.classList.add("connection-mode");content.innerHTML=`<section class="connection-shell"><div class="card error"><h1>Не удалось подтвердить Telegram</h1><p>${esc(error.message)}</p><p>Закройте окно и заново откройте Mini App кнопкой из бота.</p></div></section>`}}
+async function loadConnection(){connectionView(null);try{state.connection=await api("connection",null,"GET");if(state.connection.agentOnline)state.pairing=null;connectionView(state.connection)}catch(error){connectionView({ownerConfigured:true,accountOwner:true},{kind:"error",message:error.message})}}
 document.addEventListener("click",async event=>{const button=event.target.closest("[data-connection]");if(!button)return;const action=button.dataset.connection;try{
   if(action==="refresh")return loadConnection();
   if(action==="enter"){document.body.classList.remove("connection-mode");return navigate("overview")}
@@ -75,6 +96,6 @@ document.addEventListener("click",async event=>{const button=event.target.closes
   if(action==="check-agent")return loadConnection();
   const result=await api(`connection/${action}`,{});
   if(result.connected){tg?.HapticFeedback?.notificationOccurred("success");connectionView(state.connection,{kind:"connected",message:"Аккаунт РТС подключён без передачи учётных данных."})}
-  else connectionView(state.connection,{kind:"waiting",message:result.antiDdos?"Завершите Anti-DDoS-проверку в открытом браузере, затем нажмите «Проверить подключение».":"Войдите в аккаунт в открытом браузере, затем вернитесь сюда и проверьте подключение."})
+  else connectionView(state.connection,result.antiDdos?{kind:"anti_ddos",message:"Завершите Anti-DDoS-проверку в открытом браузере, затем нажмите «Проверить подключение»."}:{kind:"waiting",message:"Войдите в аккаунт в открытом браузере, затем вернитесь сюда и проверьте подключение."})
 }catch(error){connectionView(state.connection,{kind:"error",message:error.message})}});
 loadConnection();
