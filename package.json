@@ -8,7 +8,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
-    "test": "node tests/smoke.mjs && node tests/procurement.mjs",
+    "test": "node tests/smoke.mjs && node tests/procurement.mjs && node tests/capabilities.mjs",
     "bot": "node dist/entrypoints/telegram.js",
     "start": "node dist/entrypoints/mcp.js",
     "dev": "tsx src/entrypoints/mcp.ts",

@@ -36,6 +36,10 @@ bot.command("deadlines", async ctx=>showDeadlines(ctx,Number(ctx.match.trim()||1
 bot.command("queue", showPipeline);
 bot.command("stage", async ctx=>setStageCommand(ctx,ctx.match.trim()));
 bot.command("digest", async ctx=>runDigest(ctx));
+bot.command("workspace", async ctx=>showWorkspace(ctx));
+bot.command("sitefilter", async ctx=>runSiteFilter(ctx,ctx.match.trim()));
+bot.command("documents", async ctx=>downloadDocuments(ctx,ctx.match.trim()));
+bot.command("tables", async ctx=>extractTables(ctx,ctx.match.trim()));
 
 bot.callbackQuery("search", async ctx => { pending.set(ctx.from.id,"search"); await ctx.answerCallbackQuery(); await ctx.reply("Введите ключевые слова, номер или заказчика:"); });
 bot.callbackQuery("card", async ctx => { pending.set(ctx.from.id,"card"); await ctx.answerCallbackQuery(); await ctx.reply("Пришлите URL карточки запроса:"); });
@@ -49,6 +53,8 @@ bot.callbackQuery("help", async ctx => { await ctx.answerCallbackQuery(); await 
 bot.callbackQuery("filters", async ctx=>{await ctx.answerCallbackQuery();await showFilters(ctx);});
 bot.callbackQuery("pipeline", async ctx=>{await ctx.answerCallbackQuery();await showPipeline(ctx);});
 bot.callbackQuery("deadlines", async ctx=>{await ctx.answerCallbackQuery();await showDeadlines(ctx,14);});
+bot.callbackQuery("workspace",async ctx=>{await ctx.answerCallbackQuery();await showWorkspace(ctx);});
+bot.callbackQuery("sitefilters",async ctx=>{await ctx.answerCallbackQuery();await ctx.reply("Введите /sitefilter запрос=ноутбук; заказчик=...; минцена=100000; максцена=3000000; статус=...; окпд=26.20; регион=Краснодар");});
 bot.callbackQuery(/^profile:run:(.+)$/,async ctx=>{await ctx.answerCallbackQuery();const p=user(ctx.from.id).profiles.find(x=>x.id===ctx.match[1]);if(p)await runAdvanced(ctx,p.filter,p.name);});
 bot.callbackQuery(/^profile:del:(.+)$/,async ctx=>{await removeProfile(ctx.from.id,ctx.match[1]);await ctx.answerCallbackQuery({text:"Профиль удалён"});await ctx.editMessageText("Профиль удалён.");});
 bot.callbackQuery(/^watch:toggle:(.+)$/,async ctx=>{const w=await toggleWatch(ctx.from.id,ctx.match[1]);await ctx.answerCallbackQuery({text:w?.enabled?"Включён":"Приостановлен"});});
@@ -91,6 +97,10 @@ async function showDeadlines(ctx:any,days:number){if(!Number.isFinite(days)||day
 async function setStageCommand(ctx:any,input:string){const stages:PipelineStage[]=["new","review","decision","prepare","submitted","won","lost","archived"];const [stage,url,...note]=input.split(/\s+/);if(!stages.includes(stage as PipelineStage)||!url)return ctx.reply(`Формат: /stage review URL комментарий\nСтадии: ${stages.join(", ")}`);await setPipeline(ctx.from.id,url,url,stage as PipelineStage,note.join(" "));await ctx.reply(`Стадия установлена: ${stage}`);}
 async function showPipeline(ctx:any){const rows=Object.values(user(ctx.from.id).pipeline).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt));if(!rows.length)return ctx.reply("Воронка пуста. Добавьте: /stage review URL первичная проверка");const groups=rows.reduce<Record<string,typeof rows>>((a,x)=>{(a[x.stage]??=[]).push(x);return a;},{});await ctx.reply(clip(Object.entries(groups).map(([stage,items])=>`<b>${stage}</b>\n${items.map(x=>`• <a href="${esc(x.url)}">${esc(x.title)}</a>${x.note?` — ${esc(x.note)}`:""}`).join("\n")}`).join("\n\n")),{parse_mode:"HTML",link_preview_options:{is_disabled:true}});}
 async function runDigest(ctx:any){const profiles=user(ctx.from.id).profiles;if(!profiles.length)return ctx.reply("Сначала создайте хотя бы один профиль /filter");for(const p of profiles.slice(0,10))await runAdvanced(ctx,p.filter,p.name);}
+async function showWorkspace(ctx:any){const wait=await ctx.reply("Инвентаризирую текущий кабинет РТС…");try{const data=await call<any>("rts_workspace");const rows=(data.workspace??[]).map((x:any)=>`• ${x.kind}: ${Math.round(x.confidence*100)}% — ${x.evidence.join(", ")}`).join("\n");await ctx.api.editMessageText(ctx.chat.id,wait.message_id,clip(`Кабинет: ${data.title}\n${data.url}\n\n${rows||"Закрытые разделы не распознаны. Проверьте ручной вход в браузере."}`));}catch(e){await ctx.api.editMessageText(ctx.chat.id,wait.message_id,`Ошибка: ${String(e)}`);}}
+async function runSiteFilter(ctx:any,input:string){if(!input)return ctx.reply("Формат: /sitefilter запрос=ноутбук; заказчик=...; минцена=100000; максцена=3000000; статус=...; окпд=26.20; регион=Краснодар");try{const f=parseFilter(input);const data=await call<any>("rts_apply_site_filters",{query:f.query??f.includeKeywords?.[0],customer:f.customer,minPrice:f.minPrice,maxPrice:f.maxPrice,status:f.status,okpd2:f.okpd2?.[0],location:f.location,submitSearch:true});await ctx.reply(clip(`Фильтры площадки применены: ${data.applied?.map((x:any)=>x.field).join(", ")||"нет"}\nНе найдены на форме: ${data.missing?.join(", ")||"нет"}\nРезультатов: ${data.requests?.length??0}`));}catch(e){await ctx.reply(`Ошибка: ${String(e)}`);}}
+async function downloadDocuments(ctx:any,url:string){if(!url)return ctx.reply("Укажите URL: /documents https://...");const wait=await ctx.reply("Скачиваю документы через авторизованную сессию…");try{const data=await call<any>("rts_download_all_documents",{url,maxFiles:30});await ctx.api.editMessageText(ctx.chat.id,wait.message_id,clip(`Скачано: ${data.documents?.filter((x:any)=>x.path).length??0}/${data.count}\n${(data.documents??[]).map((x:any)=>`• ${x.name}: ${x.path??x.error}`).join("\n")}`));}catch(e){await ctx.api.editMessageText(ctx.chat.id,wait.message_id,`Ошибка: ${String(e)}`);}}
+async function extractTables(ctx:any,url:string){if(!url)return ctx.reply("Укажите URL: /tables https://...");try{const data=await call<any>("rts_extract_tables",{url});await ctx.reply(clip(JSON.stringify(data.tables,null,2)));}catch(e){await ctx.reply(`Ошибка: ${String(e)}`);}}
 
 await bot.api.setMyCommands(botCommands);
 setInterval(() => void monitorOnce(bot), botConfig.monitorIntervalMs).unref();

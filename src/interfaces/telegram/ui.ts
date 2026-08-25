@@ -5,6 +5,7 @@ export const mainMenu = () => new InlineKeyboard()
   .text("📄 Карточка", "card").text("🧠 Анализ", "analyze").row()
   .text("⭐ Избранное", "favorites").text("🔔 Мониторинг", "watches").row()
   .text("📋 Воронка", "pipeline").text("⏰ Дедлайны", "deadlines").row()
+  .text("🧭 Кабинет РТС", "workspace").text("🛠 Фильтры сайта", "sitefilters").row()
   .text("🔐 Сессия РТС", "session").text("👤 Роль", "role").row()
   .text("ℹ️ Помощь", "help");
 
@@ -22,6 +23,10 @@ export const helpText = `Бот работает через локальный M
 /queue — рабочая воронка
 /stage стадия URL — изменить стадию
 /session — состояние площадки
+/workspace — функции текущего кабинета РТС
+/sitefilter параметры — применить фильтры прямо на сайте
+/documents URL — скачать все документы карточки
+/tables URL — извлечь таблицы карточки
 /role — рабочая роль
 
 Формат фильтра: ключи=ноутбук, компьютер; исключить=ремонт; минцена=100000; максцена=3000000; заказчик=администрация; регион=Краснодар; окпд=26.20; дней=3-20; документы=да; сорт=срок`;
@@ -38,6 +43,10 @@ export const botCommands = [
   { command: "queue", description: "Рабочая воронка" },
   { command: "favorites", description: "Избранное" },
   { command: "session", description: "Состояние РТС" },
+  { command: "workspace", description: "Возможности кабинета РТС" },
+  { command: "sitefilter", description: "Применить фильтры на площадке" },
+  { command: "documents", description: "Скачать документы карточки" },
+  { command: "tables", description: "Извлечь таблицы карточки" },
   { command: "role", description: "Рабочая роль" },
   { command: "help", description: "Помощь" },
 ];

@@ -6,6 +6,7 @@ import { closeBrowser, getPage, open, safeDownloadPath, status } from "../../inf
 import { config, portalUrl } from "../../infrastructure/rts/config.js";
 import { extractRequestPages, extractRequests, visibleSnapshot } from "../../infrastructure/rts/extract.js";
 import { analyzeDeterministic, filterTenders, normalizeTender } from "../../domain/procurement.js";
+import { applySemanticFilters, inspectPortal } from "../../infrastructure/rts/inventory.js";
 
 const server = new McpServer({ name: "krd-market-rts", version: "0.1.0" });
 const text = (value: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }] });
@@ -20,6 +21,16 @@ server.tool("rts_open", "Navigate inside krd-market.rts-tender.ru and return a s
 }, async ({ path }) => {
   try { const p = await open(path); return text({ url: p.url(), title: await p.title(), ...(await visibleSnapshot(p)) }); } catch (e) { return fail(e); }
 });
+
+server.tool("rts_inspect_portal", "Inventory the current authenticated RTS page: semantic capabilities, controls, forms and tables. Use this after login to discover account-specific functions.", {
+  path: z.string().default("/zapros/"), includeText: z.boolean().default(false),
+}, async ({path,includeText})=>{try{const p=await open(path);const result=await inspectPortal(p);if(!includeText)result.text="";return text(result);}catch(e){return fail(e);}});
+
+server.tool("rts_apply_site_filters", "Fill recognized filters in the native RTS search form without submitting a bid or other legally significant action.", {
+  query:z.string().optional(),number:z.string().optional(),customer:z.string().optional(),minPrice:z.number().optional(),maxPrice:z.number().optional(),status:z.string().optional(),dateFrom:z.string().optional(),dateTo:z.string().optional(),okpd2:z.string().optional(),location:z.string().optional(),submitSearch:z.boolean().default(true),
+},async ({submitSearch,...values})=>{try{const p=await open("/zapros/");const result=await applySemanticFilters(p,values);if(submitSearch){const button=p.getByRole("button",{name:/найти|поиск|применить|показать/i}).first();if(await button.count()&&await button.isEnabled()){await button.click();await p.waitForLoadState("domcontentloaded").catch(()=>{});}}return text({...result,url:p.url(),requests:await extractRequests(p,100)});}catch(e){return fail(e);}});
+
+server.tool("rts_workspace", "Discover authenticated workspace sections such as applications, offers, contracts, clarifications, protocols and organization profile.", {},async()=>{try{const p=await getPage();const inventory=await inspectPortal(p);const workspace=inventory.capabilities.filter(x=>["applications","offer","contracts","clarifications","protocols","organization","auth"].includes(x.kind));return text({url:p.url(),title:inventory.title,workspace,links:inventory.controls.filter(x=>x.kind==="link"&&workspace.some(w=>w.controls.includes(x.id)))});}catch(e){return fail(e);}});
 
 server.tool("rts_list_requests", "List procurement/request links from the public request page. Filters are applied through visible search controls when recognizable.", {
   query: z.string().optional(), status: z.string().optional(), limit: z.number().int().min(1).max(100).default(30),
@@ -83,6 +94,10 @@ server.tool("rts_get_request", "Open a same-origin request card and extract its 
   } catch (e) { return fail(e); }
 });
 
+server.tool("rts_extract_tables", "Extract visible tables from a same-origin RTS page as structured rows.", {url:z.string()},async({url})=>{try{const p=await open(url);const inventory=await inspectPortal(p);return text({url:p.url(),title:inventory.title,tables:inventory.tables});}catch(e){return fail(e);}});
+
+server.tool("rts_download_all_documents", "Download all recognized same-origin documents from a request card through the authenticated browser session.", {url:z.string(),maxFiles:z.number().int().min(1).max(100).default(30)},async({url,maxFiles})=>{try{const p=await open(url);const links=await p.locator("a[href]").evaluateAll(nodes=>(nodes as HTMLAnchorElement[]).map(a=>({name:(a.innerText||a.download||"document").trim(),url:a.href})).filter(x=>/download|document|file|attachment|\.pdf|\.docx?|\.xlsx?|\.zip/i.test(x.url+x.name)).slice(0,maxFiles));const saved=[];for(const item of links){const target=portalUrl(item.url);const response=await p.context().request.get(target);if(!response.ok()){saved.push({...item,error:`HTTP ${response.status()}`});continue;}const destination=safeDownloadPath(item.name||new URL(target).pathname.split("/").pop()||"document");await fs.writeFile(destination,await response.body());saved.push({...item,path:destination,status:response.status()});}return text({count:saved.length,documents:saved});}catch(e){return fail(e);}});
+
 server.tool("rts_download", "Download a same-origin document through the authenticated browser session.", {
   url: z.string(), filename: z.string().optional(),
 }, async ({ url, filename }) => {
@@ -117,3 +132,4 @@ server.tool("rts_close", "Close the local browser session (profile remains on di
 
 process.on("SIGINT", async () => { await closeBrowser(); process.exit(0); });
 await server.connect(new StdioServerTransport());
+import fs from "node:fs/promises";
