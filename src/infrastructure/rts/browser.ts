@@ -5,6 +5,16 @@ import { config, portalUrl } from "./config.js";
 
 let context: BrowserContext | undefined;
 let page: Page | undefined;
+const transientNavigationError=/ERR_(CONNECTION_RESET|CONNECTION_CLOSED|NETWORK_CHANGED|TIMED_OUT)|Navigation timeout/i;
+
+async function navigate(page:Page,target:string){
+  let lastError:unknown;
+  for(let attempt=1;attempt<=3;attempt++){
+    try{return await page.goto(target,{waitUntil:"domcontentloaded"});}
+    catch(error){lastError=error;if(attempt===3||!transientNavigationError.test(String(error)))throw error;await page.waitForTimeout(attempt*1_500);}
+  }
+  throw lastError;
+}
 
 export async function getPage(): Promise<Page> {
   if (page && !page.isClosed()) return page;
@@ -24,7 +34,7 @@ export async function getPage(): Promise<Page> {
 export async function open(pathname = "/zapros/"): Promise<Page> {
   const p = await getPage();
   const target = portalUrl(pathname);
-  if (p.url() !== target) await p.goto(target, { waitUntil: "domcontentloaded" });
+  if (p.url() !== target) await navigate(p,target);
   return p;
 }
 
