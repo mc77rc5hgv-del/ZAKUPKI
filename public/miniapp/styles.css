@@ -147,6 +147,12 @@ textarea { min-height: 96px; resize: vertical; }
 .danger-text { color: var(--danger); }
 .device-actions { margin-top: 12px; }
 .connection-diagnostic { margin: 10px 0 0; font-size: 11px; letter-spacing: .04em; color: var(--muted); text-align: center; }
+.status-strip { display: flex; flex-wrap: wrap; gap: 8px; }
+.status-pill { display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); font-size: 12px; font-weight: 700; color: var(--muted); }
+.status-pill svg { width: 14px; height: 14px; }
+.status-pill.ok { color: var(--success); }
+.status-pill.warn { color: var(--danger); border-color: var(--danger-soft); background: var(--danger-soft); }
+.status-pill.warn .button { margin-left: 2px; }
 .connection-logo { display: grid; width: 58px; height: 58px; margin: 0 auto 14px; place-items: center; border-radius: 18px; background: var(--navy); color: #fff; box-shadow: var(--shadow); }
 .connection-logo svg { width: 30px; height: 30px; }
 .connection-hero h1 { margin: 4px 0 8px; font-size: clamp(26px, 7vw, 38px); line-height: 1.1; letter-spacing: -.035em; }
