@@ -1,7 +1,8 @@
 import { Bot, InlineKeyboard } from "grammy";
-import { assertBotConfig, botConfig } from "../../config/bot.js";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { assertBotConfig, assertRtsAccess, botConfig } from "../../config/bot.js";
 import { addFavorite, addProfile, addWatch, loadStore, removeFavorite, removeProfile, removeWatch, setPipeline, setRole, toggleWatch, user, type PipelineStage } from "../../infrastructure/persistence/bot-store.js";
-import { call, closeMcp } from "../../application/mcp-client.js";
+import { call as rawCall, closeMcp } from "../../application/mcp-client.js";
 import { analyzeTender } from "../../infrastructure/ai/tender-analysis.js";
 import { clip, esc, requestList, tenderList } from "./format.js";
 import { monitorOnce } from "./monitor.js";
@@ -13,11 +14,13 @@ const bot = new Bot(botConfig.token);
 const pending = new Map<number, "search" | "watch" | "card" | "analyze" | "filter">();
 const favoriteTokens = new Map<string, string>();
 const favoriteKey = (url: string) => Buffer.from(url).toString("base64url").slice(-24);
+const actor = new AsyncLocalStorage<number>();
+const call = async <T=unknown>(name:string,args:Record<string,unknown>={})=>{const id=actor.getStore();if(!id)throw new Error("Контекст пользователя отсутствует");assertRtsAccess(id);return rawCall<T>(name,args);};
 
 bot.use(async (ctx, next) => {
   const id = ctx.from?.id;
   if (!id || !botConfig.allowedUsers.has(id)) { if (ctx.message) await ctx.reply("Доступ запрещён. Ваш Telegram ID не внесён в TELEGRAM_ALLOWED_USERS."); return; }
-  await next();
+  await actor.run(id,next);
 });
 
 bot.command("start", ctx => ctx.reply("Помощник по закупкам Краснодарского края готов.", { reply_markup: mainMenu(botConfig.miniAppUrl) }));

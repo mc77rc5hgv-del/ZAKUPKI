@@ -26,8 +26,8 @@ html { min-width: 320px; background: var(--bg); scroll-behavior: smooth; }
 body { margin: 0; min-width: 320px; background: var(--bg); color: var(--text); font-size: 16px; line-height: 1.5; overflow-wrap: anywhere; }
 button, input, select, textarea { font: inherit; touch-action: manipulation; }
 button, [role="button"] { cursor: pointer; }
-.skip-link { position: fixed; z-index: 100; top: -80px; left: 12px; padding: 10px 14px; border-radius: 8px; background: var(--navy); color: #fff; }
-.skip-link:focus { top: 12px; }
+.skip-link { position: fixed; z-index: 100; top: 12px; left: 12px; padding: 10px 14px; border-radius: 8px; background: var(--navy); color: #fff; white-space: nowrap; transform: translateY(-220%); }
+.skip-link:focus { transform: translateY(0); }
 .app-shell { min-height: 100dvh; padding-bottom: calc(78px + var(--safe-bottom)); }
 .topbar { position: sticky; z-index: 20; top: 0; display: flex; align-items: center; justify-content: space-between; min-height: 82px; padding: calc(12px + var(--safe-top)) 16px 12px; border-bottom: 1px solid color-mix(in srgb, var(--line) 82%, transparent); background: color-mix(in srgb, var(--bg) 91%, transparent); backdrop-filter: blur(18px) saturate(150%); }
 .brand-block, .topbar-actions, .nav-brand { display: flex; align-items: center; }
@@ -129,6 +129,34 @@ textarea { min-height: 96px; resize: vertical; }
 .tabs { display: flex; gap: 8px; padding: 2px 0 5px; overflow-x: auto; scrollbar-width: thin; }
 .tabs .button { flex: 0 0 auto; }
 .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); border: 0; }
+.connection-mode .topbar, .connection-mode .bottom-nav { display: none; }
+.connection-mode .app-shell { padding: 0; }
+.connection-mode main { width: 100%; max-width: none; min-height: 100dvh; padding: calc(20px + var(--safe-top)) 16px calc(24px + var(--safe-bottom)); display: grid; place-items: center; }
+.connection-shell { width: min(100%, 920px); }
+.connection-hero { max-width: 630px; margin: 0 auto 22px; text-align: center; }
+.connection-logo { display: grid; width: 58px; height: 58px; margin: 0 auto 14px; place-items: center; border-radius: 18px; background: var(--navy); color: #fff; box-shadow: var(--shadow); }
+.connection-logo svg { width: 30px; height: 30px; }
+.connection-hero h1 { margin: 4px 0 8px; font-size: clamp(26px, 7vw, 38px); line-height: 1.1; letter-spacing: -.035em; }
+.connection-hero > p:last-child { margin: 0; color: var(--muted); }
+.connection-layout { display: grid; gap: 12px; }
+.connection-card, .privacy-card { padding: 18px; }
+.connection-status { display: grid; grid-template-columns: 12px minmax(0, 1fr); gap: 12px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+.connection-status > span { width: 12px; height: 12px; margin-top: 6px; border-radius: 50%; background: var(--warning); box-shadow: 0 0 0 4px var(--warning-soft); }
+.connection-status.is-connected > span { background: var(--success); box-shadow: 0 0 0 4px var(--success-soft); }
+.connection-status.is-blocked > span { background: var(--danger); box-shadow: 0 0 0 4px var(--danger-soft); }
+.connection-status strong { font-size: 17px; }
+.connection-status p, .privacy-item p { margin: 3px 0 0; color: var(--muted); font-size: 13px; }
+.connection-message { margin-top: 14px; padding: 11px 12px; border-radius: 10px; background: var(--primary-soft); color: var(--text); font-size: 13px; }
+.connection-message.error { border: 1px solid color-mix(in srgb, var(--danger) 25%, var(--line)); background: var(--danger-soft); }
+.connection-actions { display: grid; gap: 8px; margin-top: 16px; }
+.connection-primary { width: 100%; }
+.privacy-card h2 { margin-bottom: 13px; }
+.privacy-item { display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 11px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.privacy-item:last-child { border-bottom: 0; padding-bottom: 0; }
+.privacy-item > span { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 10px; background: var(--primary-soft); color: var(--primary); }
+.privacy-item svg { width: 20px; height: 20px; }
+.privacy-item strong { font-size: 14px; }
+.connection-footnote { max-width: 680px; margin: 16px auto 0; color: var(--muted); font-size: 12px; text-align: center; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (min-width: 560px) {
   .connection-badge, .page-subtitle { display: flex; }
@@ -145,6 +173,8 @@ textarea { min-height: 96px; resize: vertical; }
   .result-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .result-list > .empty { grid-column: 1 / -1; }
   .toast { right: 22px; left: auto; bottom: 92px; }
+  .connection-layout { grid-template-columns: minmax(0, 1fr) minmax(0, .9fr); gap: 14px; align-items: stretch; }
+  .connection-card, .privacy-card { padding: 22px; }
 }
 @media (min-width: 1024px) {
   .app-shell { padding: 0 0 0 244px; }
@@ -162,6 +192,8 @@ textarea { min-height: 96px; resize: vertical; }
   .nav-footer { display: flex; align-items: center; gap: 9px; margin-top: auto; padding: 12px 10px; border-top: 1px solid rgba(255, 255, 255, .12); color: #b7c2d3; font-size: 12px; }
   .nav-footer .status-indicator { background: #52d2ab; }
   .toast { bottom: 24px; }
+  .connection-mode .app-shell { padding-left: 0; }
+  .connection-mode main { padding: 40px; }
 }
 @media (max-height: 500px) and (orientation: landscape) and (max-width: 1023px) {
   .topbar { position: static; min-height: 70px; }

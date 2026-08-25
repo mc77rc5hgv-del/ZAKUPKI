@@ -9,7 +9,7 @@
     "build": "tsc -p tsconfig.json",
     "build:railway": "playwright install chromium && tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
-    "test": "node tests/smoke.mjs && node tests/procurement.mjs && node tests/capabilities.mjs && node tests/dossier.mjs && node tests/participation.mjs && node tests/telegram-auth.mjs",
+    "test": "node tests/smoke.mjs && node tests/procurement.mjs && node tests/capabilities.mjs && node tests/dossier.mjs && node tests/participation.mjs && node tests/telegram-auth.mjs && node tests/rts-access.mjs",
     "bot": "node dist/entrypoints/telegram.js",
     "start": "node dist/entrypoints/mcp.js",
     "start:mcp": "node dist/entrypoints/mcp.js",

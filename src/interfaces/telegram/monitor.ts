@@ -3,6 +3,7 @@ import { call } from "../../application/mcp-client.js";
 import { allUsers, updateWatch } from "../../infrastructure/persistence/bot-store.js";
 import { clip, esc } from "./format.js";
 import { createHash } from "node:crypto";
+import { assertRtsAccess } from "../../config/bot.js";
 
 let running = false;
 export async function monitorOnce(bot: Bot) {
@@ -10,6 +11,7 @@ export async function monitorOnce(bot: Bot) {
   try {
     for (const { id, data } of allUsers()) for (const watch of data.watches.filter(x=>x.enabled)) {
       try {
+        assertRtsAccess(id);
         const result = await call<{ tenders: Array<{ title: string; url: string; summary?: string; price?:number; deadlineAt?:string; score?:number }> }>("rts_search_advanced", { ...watch.filter, scanLimit: 500, resultLimit: 100 });
         const known = new Set(watch.lastUrls); const fresh = result.tenders.filter(x => !known.has(x.url));
         const fingerprints=Object.fromEntries(result.tenders.map(x=>[x.url,createHash("sha256").update(JSON.stringify(x)).digest("hex")]));
