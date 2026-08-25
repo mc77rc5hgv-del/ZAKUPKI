@@ -1,11 +1,12 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { botConfig } from "../config/bot.js";
 
 let client: Client | undefined;
+const rtsEnvironment=()=>Object.fromEntries(Object.entries(process.env).filter(([key,value])=>key.startsWith("RTS_")&&value!==undefined)) as Record<string,string>;
 export async function mcp() {
   if (client) return client;
-  const transport = new StdioClientTransport({ command: botConfig.mcpCommand, args: botConfig.mcpArgs, stderr: "inherit" });
+  const transport = new StdioClientTransport({ command: botConfig.mcpCommand, args: botConfig.mcpArgs, env:{...getDefaultEnvironment(),...rtsEnvironment()}, stderr: "inherit" });
   client = new Client({ name: "krd-market-telegram", version: "0.1.0" });
   await client.connect(transport); return client;
 }
