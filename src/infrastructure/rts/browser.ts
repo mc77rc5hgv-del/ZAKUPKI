@@ -5,13 +5,24 @@ import { config, portalUrl } from "./config.js";
 
 let context: BrowserContext | undefined;
 let page: Page | undefined;
-const transientNavigationError=/ERR_(CONNECTION_RESET|CONNECTION_CLOSED|NETWORK_CHANGED|TIMED_OUT)|Navigation timeout/i;
+const transientNavigationError =
+  /ERR_(CONNECTION_RESET|CONNECTION_CLOSED|NETWORK_CHANGED|TIMED_OUT)|Navigation timeout/i;
 
-async function navigate(page:Page,target:string){
-  let lastError:unknown;
-  for(let attempt=1;attempt<=3;attempt++){
-    try{return await page.goto(target,{waitUntil:"domcontentloaded"});}
-    catch(error){lastError=error;if(attempt===3||!transientNavigationError.test(String(error)))throw error;await page.waitForTimeout(attempt*1_500);}
+async function navigate(page: Page, target: string) {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= config.navigationRetries; attempt += 1) {
+    try {
+      return await page.goto(target, { waitUntil: "domcontentloaded" });
+    } catch (error) {
+      lastError = error;
+      if (
+        attempt === config.navigationRetries ||
+        !transientNavigationError.test(String(error))
+      ) {
+        throw error;
+      }
+      await page.waitForTimeout(attempt * 1_500);
+    }
   }
   throw lastError;
 }
@@ -25,6 +36,7 @@ export async function getPage(): Promise<Page> {
     acceptDownloads: true,
     viewport: { width: 1440, height: 1000 },
     locale: "ru-RU",
+    proxy: config.proxy,
   });
   context.setDefaultTimeout(config.timeoutMs);
   page = context.pages()[0] ?? (await context.newPage());
