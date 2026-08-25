@@ -4,6 +4,7 @@ export const mainMenu = () => new InlineKeyboard()
   .text("🔎 Поиск", "search").text("🎛 Фильтры", "filters").row()
   .text("📄 Карточка", "card").text("🧠 Анализ", "analyze").row()
   .text("🗂 Досье", "dossier").text("📝 Черновик", "drafthelp").row()
+  .text("✅ Готовность", "readiness").text("💰 Экономика", "economicshelp").row()
   .text("⭐ Избранное", "favorites").text("🔔 Мониторинг", "watches").row()
   .text("📋 Воронка", "pipeline").text("⏰ Дедлайны", "deadlines").row()
   .text("🧭 Кабинет РТС", "workspace").text("🛠 Фильтры сайта", "sitefilters").row()
@@ -22,6 +23,9 @@ export const helpText = `Бот работает через локальный M
 /track URL — сохранить снимок и найти изменения
 /compare URL1 URL2 — сравнить закупки
 /draft URL | цена=...; количество=...; поставка=... — план черновика предложения
+/readiness URL — готовность к участию и блокирующие риски
+/economics параметры — предельная цена и безопасное снижение
+/workplan URL — план подготовки от дедлайна назад
 /watch текст — простой мониторинг
 /watchfilter ID — мониторинг по профилю
 /favorites — избранное
@@ -48,6 +52,9 @@ export const botCommands = [
   { command: "track", description: "Контроль изменений карточки" },
   { command: "compare", description: "Сравнить две закупки" },
   { command: "draft", description: "Черновик ценового предложения" },
+  { command: "readiness", description: "Готовность к участию" },
+  { command: "economics", description: "Экономика и предельная цена" },
+  { command: "workplan", description: "План подготовки заявки" },
   { command: "watch", description: "Мониторинг новых закупок" },
   { command: "queue", description: "Рабочая воронка" },
   { command: "favorites", description: "Избранное" },

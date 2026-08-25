@@ -65,6 +65,9 @@ npm run build
 | `rts_track_request` | сохранить снимок и найти изменения карточки |
 | `rts_compare_requests` | сравнить коммерческие условия двух закупок |
 | `rts_prepare_offer_draft` | проверить или заполнить черновик предложения без отправки |
+| `rts_assess_readiness` | оценить готовность, блокеры и действия до подачи |
+| `rts_bid_economics` | рассчитать безубыточность, целевую цену и безопасное снижение |
+| `rts_build_workplan` | построить обратный план подготовки от дедлайна |
 | `rts_download` | скачать документ через текущую сессию |
 | `rts_screenshot` | сохранить снимок страницы |
 | `rts_act` | явное действие по CSS-селектору |
@@ -143,6 +146,9 @@ pnpm run bot
 /track https://krd-market.rts-tender.ru/...
 /compare URL1 URL2
 /draft URL | цена=125000; количество=10; поставка=7; срок=30; комментарий=текст
+/readiness URL
+/economics цена=1000000; себестоимость=650000; логистика=50000; накладные=30000; налог=6; резерв=5; прибыль=12
+/workplan URL
 ```
 
 Адаптивная инвентаризация не заменяет контрактный API, но позволяет подключать разные роли и версии интерфейса без хранения паролей и без жёсткой зависимости от одного CSS-класса.
@@ -160,3 +166,32 @@ pnpm run bot
 - согласованный с РТС-тендер официальный API, если он доступен по договору;
 - журналирование юридически значимых действий и правило «четырёх глаз» для подачи/подписания;
 - отдельный тестовый контур до включения `RTS_ALLOW_WRITES=true`.
+
+## Развёртывание на Railway
+
+В репозитории есть `railway.json`: Railway собирает TypeScript и запускает Telegram-бота командой `pnpm run start:bot`. Бот самостоятельно запускает MCP-мост дочерним процессом.
+
+Обязательные переменные Railway:
+
+```text
+TELEGRAM_BOT_TOKEN=...
+TELEGRAM_ALLOWED_USERS=123456789
+TELEGRAM_ADMIN_USERS=123456789
+RTS_HEADLESS=true
+RAILPACK_NODE_PLAYWRIGHT_INSTALL=1
+```
+
+Рекомендуемые переменные при подключённом Railway Volume в `/data`:
+
+```text
+BOT_DATA_DIR=/data/bot
+RTS_PROFILE_DIR=/data/rts-profile
+RTS_DOWNLOAD_DIR=/data/downloads
+RTS_SNAPSHOT_DIR=/data/snapshots
+OPENAI_API_KEY=...
+OPENAI_MODEL=gpt-5.4
+```
+
+`pnpm-workspace.yaml` обязательно содержит `packages: ["."]`; без этого pnpm 9 в Railpack завершает установку ошибкой `packages field missing or empty`.
+
+Важно: площадка использует Anti-DDoS и ручную авторизацию/ЭП. Обычный headless Chromium в Railway может не пройти защиту. Для полного доступа к закрытому кабинету надёжнее запускать MCP-мост на рабочем Windows-компьютере с постоянным профилем, а Telegram-бот — рядом с ним или через защищённый частный канал. Railway подходит для бота и аналитики, но не гарантирует прохождение Anti-DDoS и работу локального сертификата ЭП.
