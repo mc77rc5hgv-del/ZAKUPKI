@@ -2,29 +2,53 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { chromium, type BrowserContext, type Page } from "playwright";
 import { config, portalUrl } from "./config.js";
+import { RtsError, classifyNavigationError, describeRtsErrorCode } from "./errors.js";
 
 let context: BrowserContext | undefined;
 let page: Page | undefined;
 const transientNavigationError =
   /ERR_(CONNECTION_RESET|CONNECTION_CLOSED|NETWORK_CHANGED|TIMED_OUT)|Navigation timeout/i;
 
+// Circuit breaker: after repeated consecutive navigation failures, stop hammering
+// a portal that is clearly down and fail fast for a cool-down period instead.
+const CIRCUIT_FAILURE_THRESHOLD = Math.max(1, Number(process.env.RTS_CIRCUIT_THRESHOLD ?? 5));
+const CIRCUIT_COOLDOWN_MS = Math.max(1_000, Number(process.env.RTS_CIRCUIT_COOLDOWN_MS ?? 60_000));
+let consecutiveFailures = 0;
+let circuitOpenUntil = 0;
+
+function assertCircuitClosed() {
+  const remainingMs = circuitOpenUntil - Date.now();
+  if (remainingMs > 0) throw new RtsError("RTS_UNAVAILABLE", `РТС недоступен после повторных сбоев подключения. Повтор через ${Math.ceil(remainingMs / 1000)} с.`);
+}
+
 async function navigate(page: Page, target: string) {
+  assertCircuitClosed();
   let lastError: unknown;
   for (let attempt = 1; attempt <= config.navigationRetries; attempt += 1) {
     try {
-      return await page.goto(target, { waitUntil: "domcontentloaded" });
+      const result = await page.goto(target, { waitUntil: "domcontentloaded" });
+      consecutiveFailures = 0;
+      circuitOpenUntil = 0;
+      return result;
     } catch (error) {
       lastError = error;
       if (
         attempt === config.navigationRetries ||
         !transientNavigationError.test(String(error))
       ) {
-        throw error;
+        break;
       }
       await page.waitForTimeout(attempt * 1_500);
     }
   }
-  throw lastError;
+  consecutiveFailures += 1;
+  if (consecutiveFailures >= CIRCUIT_FAILURE_THRESHOLD) circuitOpenUntil = Date.now() + CIRCUIT_COOLDOWN_MS;
+  const code = classifyNavigationError(lastError);
+  // The raw Playwright/network error (can include internal URLs) stays in the
+  // server log only; callers — including Telegram and the Mini App — only ever
+  // see the short, stable, translated description for the classified code.
+  console.error("rts navigate failed", code, lastError instanceof Error ? lastError.message : String(lastError));
+  throw new RtsError(code, describeRtsErrorCode(code));
 }
 
 export async function getPage(): Promise<Page> {

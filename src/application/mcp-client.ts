@@ -4,12 +4,28 @@ import { botConfig } from "../config/bot.js";
 import { sendRpc } from "../infrastructure/agent-hub/server.js";
 
 let client: Client | undefined;
+let connecting: Promise<Client> | undefined;
 const rtsEnvironment=()=>Object.fromEntries(Object.entries(process.env).filter(([key,value])=>key.startsWith("RTS_")&&value!==undefined)) as Record<string,string>;
-export async function mcp() {
-  if (client) return client;
+
+async function connect(): Promise<Client> {
   const transport = new StdioClientTransport({ command: botConfig.mcpCommand, args: botConfig.mcpArgs, env:{...getDefaultEnvironment(),...rtsEnvironment()}, stderr: "inherit" });
-  client = new Client({ name: "krd-market-telegram", version: "0.1.0" });
-  await client.connect(transport); return client;
+  const next = new Client({ name: "krd-market-telegram", version: "0.1.0" });
+  // If the subprocess dies later (crashed Chromium, killed process, ...) drop the
+  // stale client so the next call transparently spawns and connects a fresh one —
+  // no separate "is it still alive" health check needed.
+  next.onclose = () => { if (client === next) client = undefined; };
+  next.onerror = () => { if (client === next) client = undefined; };
+  await next.connect(transport);
+  client = next;
+  return next;
+}
+/** Concurrency-safe lazy singleton: overlapping callers during startup or after a
+ * disconnect share one in-flight connect instead of racing to spawn duplicate
+ * subprocesses, and a failed attempt never leaves a poisoned client behind. */
+export async function mcp(): Promise<Client> {
+  if (client) return client;
+  if (!connecting) connecting = connect().finally(() => { connecting = undefined; });
+  return connecting;
 }
 async function callLocal<T>(name: string, args: Record<string, unknown>): Promise<T> {
   const result = await (await mcp()).callTool({ name, arguments: args });

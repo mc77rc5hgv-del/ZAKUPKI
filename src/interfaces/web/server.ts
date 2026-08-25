@@ -85,6 +85,9 @@ function publicError(error:unknown){
   if(/владелец|принадлежит другому|облачная авторизация/i.test(message))return message;
   if(/Telegram|подпись|список доступа|сессия Telegram/i.test(message))return message;
   if(/устройств|подтверждени/i.test(message))return message;
+  // RtsError messages (network/timeout/circuit-breaker/queue) are pre-written,
+  // static Russian text with no interpolated internals — safe to pass through.
+  if(/РТС|браузер/i.test(message))return message;
   return "Операция не выполнена. Проверьте подключение к РТС и повторите попытку.";
 }
 

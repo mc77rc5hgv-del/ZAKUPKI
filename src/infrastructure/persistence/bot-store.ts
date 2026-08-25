@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { botConfig } from "../../config/bot.js";
 import type { TenderFilter } from "../../domain/procurement.js";
+import { readStoreFile, writeStoreFile } from "../security/encrypted-store.js";
 
 export type Watch = { id: string; name: string; filter: TenderFilter; enabled: boolean; createdAt: string; lastUrls: string[]; fingerprints: Record<string, string> };
 export type FilterProfile = { id: string; name: string; filter: TenderFilter; createdAt: string };
@@ -16,18 +17,14 @@ const file = () => path.join(botConfig.dataDir, "bot.json");
 export async function loadStore() {
   if (loaded) return;
   await fs.mkdir(botConfig.dataDir, { recursive: true });
-  db = JSON.parse(await fs.readFile(file(), "utf8").catch(() => '{"users":{}}')) as Database;
+  db = await readStoreFile<Database>(file(), { users: {} });
   for (const value of Object.values(db.users)) {
     value.profiles ??= []; value.pipeline ??= {};
     value.watches = (value.watches ?? []).map((w: any) => w.filter ? { enabled: true, fingerprints: {}, ...w } : ({ id: w.id, name: w.query, filter: { query: w.query, status: w.status }, enabled: true, createdAt: w.createdAt, lastUrls: w.lastUrls ?? [], fingerprints: {} }));
   }
   loaded = true;
 }
-async function save() {
-  const temp = `${file()}.tmp`;
-  await fs.writeFile(temp, JSON.stringify(db, null, 2), "utf8");
-  await fs.rename(temp, file());
-}
+async function save() { await writeStoreFile(file(), db); }
 export function user(id: number): UserData {
   return db.users[id] ??= { role: "participant", favorites: {}, watches: [], profiles: [], pipeline: {} };
 }

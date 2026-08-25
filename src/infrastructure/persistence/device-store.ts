@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { botConfig } from "../../config/bot.js";
 import { generatePairingCode, hashSecret, normalizePairingCode, secretMatches } from "../security/pairing.js";
+import { readStoreFile, writeStoreFile } from "../security/encrypted-store.js";
 
 export type Device = {
   deviceId: string;
@@ -35,18 +36,13 @@ const file = () => path.join(botConfig.dataDir, "devices.json");
 export async function loadDeviceStore() {
   if (loaded) return;
   await fs.mkdir(botConfig.dataDir, { recursive: true });
-  const raw = await fs.readFile(file(), "utf8").catch(() => '{"devices":[],"pairingCodes":[]}');
-  db = JSON.parse(raw) as Database;
+  db = await readStoreFile<Database>(file(), { devices: [], pairingCodes: [] });
   db.devices ??= [];
   db.pairingCodes ??= [];
   loaded = true;
 }
 
-async function save() {
-  const temp = `${file()}.tmp`;
-  await fs.writeFile(temp, JSON.stringify(db, null, 2), "utf8");
-  await fs.rename(temp, file());
-}
+async function save() { await writeStoreFile(file(), db); }
 
 function pruneExpiredCodes(now = Date.now()) {
   db.pairingCodes = db.pairingCodes.filter(c => !c.usedAt && new Date(c.expiresAt).getTime() > now - 60_000);
