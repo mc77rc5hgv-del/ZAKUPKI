@@ -1,2 +1,5 @@
 #!/usr/bin/env node
-import "../interfaces/telegram/bot.js";
+import { loadEnvFile } from "../config/load-env.js";
+
+await loadEnvFile();
+await import("../interfaces/telegram/bot.js");

@@ -1,2 +1,5 @@
 #!/usr/bin/env node
-import "../interfaces/mcp/server.js";
+import { loadEnvFile } from "../config/load-env.js";
+
+await loadEnvFile();
+await import("../interfaces/mcp/server.js");

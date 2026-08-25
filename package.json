@@ -15,7 +15,8 @@
     "start:bot": "node dist/entrypoints/telegram.js",
     "deploy:check": "pnpm install --frozen-lockfile && pnpm run build && pnpm run test",
     "dev": "tsx src/entrypoints/mcp.ts",
-    "install-browser": "playwright install chromium"
+    "install-browser": "playwright install chromium",
+    "connect-account": "node scripts/connect-account.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.17.4",
