@@ -4,12 +4,14 @@ import { WebSocketServer, WebSocket, type RawData } from "ws";
 import { findDevice, touchDevice } from "../persistence/device-store.js";
 import { secretMatches } from "../security/pairing.js";
 import { isAllowedRpcMethod } from "../../application/rpc-allowlist.js";
-import { safeRpcError } from "../../application/rpc-safety.js";
+import { safeRpcError, sanitizeRpcResult } from "../../application/rpc-safety.js";
+import { botConfig } from "../../config/bot.js";
 
 const MAX_PAYLOAD_BYTES = 8 * 1024 * 1024;
 const HELLO_TIMEOUT_MS = 10_000;
 const HEARTBEAT_TIMEOUT_MS = 60_000;
 const DEFAULT_RPC_TIMEOUT_MS = 45_000;
+const MAX_PENDING_RPC = 32;
 
 type Pending = { resolve: (value: unknown) => void; reject: (error: Error) => void; timer: NodeJS.Timeout };
 type Connection = { ws: WebSocket; deviceId: string; ownerTelegramId: number; lastSeenAt: number; pending: Map<string, Pending> };
@@ -72,8 +74,9 @@ export async function sendRpc<T = unknown>(ownerTelegramId: number, method: stri
   if (!isAllowedRpcMethod(method)) throw new Error("RPC_METHOD_NOT_ALLOWED");
   const connection = connections.get(ownerTelegramId);
   if (!connection) throw new Error("AGENT_OFFLINE");
+  if (connection.pending.size >= MAX_PENDING_RPC) throw new Error("AGENT_BUSY");
   const id = randomUUID();
-  const timeoutMs = opts.timeoutMs ?? DEFAULT_RPC_TIMEOUT_MS;
+  const timeoutMs = Math.max(1_000, Math.min(120_000, opts.timeoutMs ?? DEFAULT_RPC_TIMEOUT_MS));
   const startedAt = Date.now();
   try {
     const result = await new Promise<T>((resolve, reject) => {
@@ -98,7 +101,7 @@ function handleMessage(connection: Connection, raw: RawData) {
     if (!pending) return; // unknown, already-resolved or replayed id — ignored
     connection.pending.delete(msg.id);
     clearTimeout(pending.timer);
-    if (msg.ok) pending.resolve(msg.result);
+    if (msg.ok === true) pending.resolve(sanitizeRpcResult(msg.result));
     else pending.reject(new Error(safeRpcError(msg?.error).code));
   }
 }
@@ -106,11 +109,12 @@ function handleMessage(connection: Connection, raw: RawData) {
 async function handleHello(ws: WebSocket, raw: RawData) {
   let msg: any;
   try { msg = JSON.parse(String(raw)); } catch { ws.close(4002, "bad json"); return; }
-  if (msg?.type !== "hello" || typeof msg.deviceId !== "string" || typeof msg.token !== "string" || msg.deviceId.length > 128 || msg.token.length > 512) {
+  if (msg?.type !== "hello" || typeof msg.deviceId !== "string" || typeof msg.token !== "string" || !/^[A-Za-z0-9._:-]{8,128}$/.test(msg.deviceId) || msg.token.length < 1 || msg.token.length > 128) {
     ws.close(4002, "bad hello"); return;
   }
   const device = findDevice(msg.deviceId);
   if (!device) { send(ws, { type: "hello_error", code: "DEVICE_UNKNOWN" }); ws.close(4003, "unknown device"); return; }
+  if (!botConfig.rtsAccountOwnerIds.has(device.ownerTelegramId)) { send(ws, { type: "hello_error", code: "OWNER_DISABLED" }); ws.close(4003, "owner disabled"); return; }
   if (device.revokedAt) { send(ws, { type: "hello_error", code: "DEVICE_REVOKED" }); ws.close(4003, "revoked"); return; }
   if (!secretMatches(msg.token, device.tokenHash)) { send(ws, { type: "hello_error", code: "TOKEN_INVALID" }); ws.close(4003, "bad token"); return; }
 

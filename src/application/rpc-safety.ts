@@ -22,18 +22,20 @@ export function safeRpcError(error: unknown): { code: string; message: string } 
 
 const PRIVATE_KEYS = new Set(["path", "localPath", "profileDir", "downloadDir", "snapshotDir", "stack"]);
 
-export function sanitizeRpcResult(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(sanitizeRpcResult);
+export function sanitizeRpcResult(value: unknown, depth = 0): unknown {
+  if (depth > 20) return "[TRUNCATED_DEPTH]";
+  if (typeof value === "string") return value.length > 200_000 ? `${value.slice(0, 199_999)}…` : value;
+  if (Array.isArray(value)) return value.slice(0, 1_000).map(item => sanitizeRpcResult(item, depth + 1));
   if (!value || typeof value !== "object") return value;
   const output: Record<string, unknown> = {};
   let savedLocally = false;
-  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+  for (const [key, item] of Object.entries(value as Record<string, unknown>).slice(0, 1_000)) {
     if (PRIVATE_KEYS.has(key)) { if ((key === "path" || key === "localPath") && typeof item === "string") savedLocally = true; continue; }
     if (key === "error" && typeof item === "string") {
       output.error = /^HTTP \d{3}$/.test(item) ? item : "Локальная операция завершилась ошибкой";
       continue;
     }
-    output[key] = sanitizeRpcResult(item);
+    output[key] = sanitizeRpcResult(item, depth + 1);
   }
   if (savedLocally) output.savedLocally = true;
   return output;

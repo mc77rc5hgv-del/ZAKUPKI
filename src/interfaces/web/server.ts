@@ -14,9 +14,9 @@ const publicDir=path.resolve("public/miniapp");
 const insidePublic=(target:string)=>target===publicDir||target.startsWith(`${publicDir}${path.sep}`);
 const securityHeaders={"x-content-type-options":"nosniff","referrer-policy":"no-referrer","permissions-policy":"camera=(), microphone=(), geolocation=(), payment=(), usb=()","cross-origin-resource-policy":"same-origin","content-security-policy":"default-src 'self'; script-src 'self' https://telegram.org; style-src 'self'; img-src 'self' data: https:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors https://web.telegram.org https://*.telegram.org"};
 const json=(res:ServerResponse,status:number,value:unknown)=>{const body=JSON.stringify(value);res.writeHead(status,{...securityHeaders,"content-type":"application/json; charset=utf-8","cache-control":"no-store"});res.end(body);};
-const readBody=async(req:IncomingMessage)=>{const chunks:Buffer[]=[];let size=0;for await(const chunk of req){const buffer=Buffer.from(chunk);size+=buffer.length;if(size>1_000_000)throw new Error("Тело запроса превышает 1 МБ");chunks.push(buffer);}return chunks.length?JSON.parse(Buffer.concat(chunks).toString("utf8")):{};};
+const readBody=async(req:IncomingMessage)=>{const chunks:Buffer[]=[];let size=0;for await(const chunk of req){const buffer=Buffer.from(chunk);size+=buffer.length;if(size>1_000_000)throw new Error("Тело запроса превышает 1 МБ");chunks.push(buffer);}const parsed=chunks.length?JSON.parse(Buffer.concat(chunks).toString("utf8")):{};if(!parsed||typeof parsed!=="object"||Array.isArray(parsed))throw new Error("Тело запроса должно быть JSON-объектом");return parsed;};
 const mime:Record<string,string>={".html":"text/html; charset=utf-8",".css":"text/css; charset=utf-8",".js":"text/javascript; charset=utf-8",".svg":"image/svg+xml",".json":"application/json; charset=utf-8"};
-async function serveStatic(req:IncomingMessage,res:ServerResponse){const pathname=new URL(req.url??"/","http://local").pathname;const relative=pathname==="/"?"index.html":pathname.replace(/^\//,"");const target=path.resolve(publicDir,relative);if(!insidePublic(target))return false;try{const data=await fs.readFile(target);res.writeHead(200,{...securityHeaders,"content-type":mime[path.extname(target)]??"application/octet-stream","cache-control":relative==="index.html"?"no-cache":"public, max-age=3600"});res.end(data);return true;}catch{return false;}}
+async function serveStatic(req:IncomingMessage,res:ServerResponse){if(req.method!=="GET"&&req.method!=="HEAD")return false;const pathname=new URL(req.url??"/","http://local").pathname;const relative=pathname==="/"?"index.html":pathname.replace(/^\//,"");const target=path.resolve(publicDir,relative);if(!insidePublic(target))return false;try{const data=await fs.readFile(target);res.writeHead(200,{...securityHeaders,"content-type":mime[path.extname(target)]??"application/octet-stream","cache-control":relative==="index.html"?"no-cache":"public, max-age=3600"});res.end(req.method==="HEAD"?undefined:data);return true;}catch{return false;}}
 function authenticate(req:IncomingMessage){
   if(botConfig.miniAppDevBypass&&["127.0.0.1","::1","::ffff:127.0.0.1","localhost"].includes(req.socket.remoteAddress??""))return {id:[...botConfig.allowedUsers][0]??1,first_name:"Development"};
   const auth=validateTelegramInitData(String(req.headers["x-telegram-init-data"]??""),botConfig.token,botConfig.telegramAuthMaxAgeSeconds);
@@ -63,12 +63,13 @@ async function platform(ctx:RequestContext,tool:string,args:Record<string,unknow
 // Pairing a new local agent proves ownership by possessing the one-time code
 // shown in the Mini App, not by Telegram initData — the agent process is not a
 // Telegram client. This is the only /api/connection route reachable without it.
-const pairAttempts=new Map<string,number[]>();
-function pairingRateLimited(ip:string,max=20,windowMs=5*60_000){const now=Date.now();const hits=(pairAttempts.get(ip)??[]).filter(t=>now-t<windowMs);hits.push(now);pairAttempts.set(ip,hits);return hits.length>max;}
+const pairAttempts=new Map<string,number[]>(),apiAttempts=new Map<string,number[]>(),inFlightByUser=new Map<number,number>();
+function rateLimited(map:Map<string,number[]>,key:string,max:number,windowMs:number){const now=Date.now();const hits=(map.get(key)??[]).filter(t=>now-t<windowMs);hits.push(now);map.set(key,hits);if(map.size>10_000){for(const [candidate,times] of map){if(!times.some(t=>now-t<windowMs))map.delete(candidate);if(map.size<=10_000)break;}if(map.size>10_000)map.delete(map.keys().next().value!);}return hits.length>max;}
+async function withRequestSlot<T>(userId:number,task:()=>Promise<T>){const active=inFlightByUser.get(userId)??0;if(active>=40)throw new Error("TOO_MANY_IN_FLIGHT");inFlightByUser.set(userId,active+1);try{return await task();}finally{const next=(inFlightByUser.get(userId)??1)-1;if(next<=0)inFlightByUser.delete(userId);else inFlightByUser.set(userId,next);}}
 async function handleDevicePair(req:IncomingMessage,res:ServerResponse){
   try{
-    const ip=req.socket.remoteAddress??"unknown";
-    if(pairingRateLimited(ip))return json(res,429,{ok:false,error:{code:"RATE_LIMITED",message:"Слишком много попыток сопряжения. Повторите позже.",retryable:true}});
+    const forwarded=String(req.headers["x-forwarded-for"]??"").split(",")[0].trim();const ip=`${req.socket.remoteAddress??"unknown"}|${forwarded}`;
+    if(rateLimited(pairAttempts,"global",500,5*60_000)||rateLimited(pairAttempts,ip,20,5*60_000))return json(res,429,{ok:false,error:{code:"RATE_LIMITED",message:"Слишком много попыток сопряжения. Повторите позже.",retryable:true}});
     const body=await readBody(req);
     const code=typeof body.code==="string"?body.code:"";
     const deviceId=typeof body.deviceId==="string"?body.deviceId:"";
@@ -87,6 +88,8 @@ export function publicError(error:unknown){
     AGENT_OFFLINE:"Подключённый компьютер не в сети. Запустите локальный агент и повторите попытку.",
     AGENT_TIMEOUT:"Локальный агент не ответил вовремя. Повторите попытку.",
     AGENT_DISCONNECTED:"Соединение с локальным агентом прервано.",
+    AGENT_BUSY:"Локальный агент занят. Дождитесь завершения текущих операций.",
+    TOO_MANY_IN_FLIGHT:"Слишком много одновременных запросов. Дождитесь завершения текущих операций.",
     DEVICE_REVOKED:"Доступ подключённого компьютера отозван.",
     RPC_FAILED:"Локальный агент не смог выполнить операцию.",
     RPC_METHOD_NOT_ALLOWED:"Команда не разрешена политикой моста.",
@@ -109,9 +112,9 @@ export async function startWebServer(){
   const server=http.createServer(async(req,res)=>{try{
     const url=new URL(req.url??"/","http://local");if(url.pathname==="/health")return json(res,200,{ok:true,service:"zakupki-miniapp"});
     if(req.method==="POST"&&url.pathname==="/api/connection/devices/pair")return handleDevicePair(req,res);
-    if(url.pathname.startsWith("/api/")){const user=authenticate(req);const handler=routes.get(`${req.method} ${url.pathname}`);if(!handler)return json(res,404,{error:"Маршрут не найден"});const body=req.method==="POST"?await readBody(req):{};return json(res,200,{ok:true,data:await handler({user,body})});}
+    if(url.pathname.startsWith("/api/")){const user=authenticate(req);if(rateLimited(apiAttempts,String(user.id),300,60_000))return json(res,429,{ok:false,error:"Слишком много запросов. Повторите через минуту."});const handler=routes.get(`${req.method} ${url.pathname}`);if(!handler)return json(res,404,{error:"Маршрут не найден"});const body=req.method==="POST"?await readBody(req):{};return json(res,200,{ok:true,data:await withRequestSlot(user.id,()=>handler({user,body}))});}
     if(await serveStatic(req,res))return;json(res,404,{error:"Страница не найдена"});
-  }catch(error){console.error("web request failed",req.method,new URL(req.url??"/","http://local").pathname,error instanceof Error?error.name:"Error");json(res,/доступ|подпись|Telegram|сессия|владелец|принадлежит|авторизация/i.test(String(error))?401:400,{ok:false,error:publicError(error)});}});
+  }catch(error){console.error("web request failed",req.method,new URL(req.url??"/","http://local").pathname,error instanceof Error?error.name:"Error");const raw=String(error);json(res,/доступ|подпись|Telegram|сессия|владелец|принадлежит|авторизация/i.test(raw)?401:/TOO_MANY_IN_FLIGHT/.test(raw)?429:400,{ok:false,error:publicError(error)});}});
   attachAgentHub(server);
   await new Promise<void>((resolve,reject)=>{server.once("error",reject);server.listen(botConfig.webPort,"0.0.0.0",()=>resolve());});
   console.log(`Mini App listening on 0.0.0.0:${botConfig.webPort}`);return server;

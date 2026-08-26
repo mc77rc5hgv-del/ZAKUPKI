@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import fs from "node:fs/promises";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -12,6 +13,7 @@ import { compareDossiers } from "../../domain/dossier.js";
 import { prepareOfferDraft } from "../../infrastructure/rts/offer-draft.js";
 import { assessReadiness, buildWorkplan, calculateBidEconomics } from "../../domain/participation.js";
 import { withPageQueue } from "../../infrastructure/rts/operation-queue.js";
+import { assertSafeBrowserAction } from "../../application/action-policy.js";
 
 const server = new McpServer({ name: "krd-market-rts", version: "0.1.0" });
 const text = (value: unknown) => ({ content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }] });
@@ -139,6 +141,8 @@ queuedTool("rts_act", "Perform an explicit UI action on the current portal page.
     if (!config.allowWrites || !confirm) throw new Error("Write actions are disabled. Set RTS_ALLOW_WRITES=true and pass confirm=true after reviewing rts_open output.");
     const p = await getPage(); const locator = p.locator(selector).first();
     if (await locator.count() !== 1) throw new Error("Selector did not resolve to an element");
+    const target = await locator.evaluate((element) => ({ tag: element.tagName, type: element.getAttribute("type") ?? "", text: (element.textContent ?? "").trim(), ariaLabel: element.getAttribute("aria-label") ?? "", name: element.getAttribute("name") ?? "", id: element.id, value: element.getAttribute("value") ?? "", formText: (element.closest("form")?.textContent ?? "").trim().slice(0, 2_000) }));
+    assertSafeBrowserAction(action, target);
     if (action === "click") await locator.click();
     else if (action === "fill") await locator.fill(value ?? "");
     else await locator.selectOption(value ?? "");
@@ -159,4 +163,3 @@ queuedTool("rts_forget_profile", "Close the browser and permanently delete the d
 
 process.on("SIGINT", async () => { await closeBrowser(); process.exit(0); });
 await server.connect(new StdioServerTransport());
-import fs from "node:fs/promises";

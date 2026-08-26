@@ -2,6 +2,7 @@ import path from "node:path";
 
 const ids = (value = "") => new Set(value.split(",").map(x => Number(x.trim())).filter(Number.isSafeInteger));
 const bool = (value = "false") => /^(1|true|yes)$/i.test(value);
+const number = (value: string | undefined, fallback: number, min: number, max: number) => { const parsed = Number(value ?? fallback); return Number.isFinite(parsed) ? Math.max(min, Math.min(max, parsed)) : fallback; };
 const numericId = (value: string | undefined) => {
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) ? parsed : undefined;
@@ -17,14 +18,14 @@ export const botConfig = {
   allowedUsers,
   adminUsers: ids(process.env.TELEGRAM_ADMIN_USERS),
   dataDir: path.resolve(process.env.BOT_DATA_DIR ?? ".bot-data"),
-  monitorIntervalMs: Math.max(1, Number(process.env.MONITOR_INTERVAL_MINUTES ?? 15)) * 60_000,
+  monitorIntervalMs: number(process.env.MONITOR_INTERVAL_MINUTES, 15, 1, 10_080) * 60_000,
   mcpCommand: process.env.MCP_COMMAND ?? process.execPath,
   mcpArgs: (process.env.MCP_ARGS ?? "dist/entrypoints/mcp.js").split(/\s+/).filter(Boolean),
   openaiModel: process.env.OPENAI_MODEL ?? "gpt-5.4",
   miniAppUrl: process.env.MINIAPP_URL ?? "",
-  webPort: Number(process.env.PORT ?? process.env.MINIAPP_PORT ?? 3000),
+  webPort: Math.round(number(process.env.PORT ?? process.env.MINIAPP_PORT, 3000, 0, 65_535)),
   miniAppDevBypass: bool(process.env.MINIAPP_DEV_BYPASS),
-  telegramAuthMaxAgeSeconds: Number(process.env.TELEGRAM_AUTH_MAX_AGE_SECONDS ?? 86_400),
+  telegramAuthMaxAgeSeconds: number(process.env.TELEGRAM_AUTH_MAX_AGE_SECONDS, 86_400, 60, 604_800),
   rtsAccountOwnerIds: configuredOwners,
   // Backward-compatible default for scheduled/internal calls that have no user
   // context. Interactive bot and Mini App calls are always routed by caller ID.

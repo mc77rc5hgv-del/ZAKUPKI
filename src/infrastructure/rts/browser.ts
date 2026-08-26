@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
+import { randomUUID } from "node:crypto";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 import { config, portalUrl } from "./config.js";
 import { RtsError, classifyNavigationError, describeRtsErrorCode } from "./errors.js";
@@ -146,5 +147,6 @@ async function ensureOwnedProfileDirectory(input: string): Promise<void> {
 
 export function safeDownloadPath(suggested: string): string {
   const clean = path.basename(suggested).replace(/[<>:"/\\|?*\x00-\x1f]/g, "_");
-  return path.join(config.downloadDir, clean || `download-${Date.now()}`);
+  const parsed = path.parse(clean || "download");
+  return path.join(config.downloadDir, `${parsed.name || "download"}-${randomUUID().slice(0, 8)}${parsed.ext}`);
 }

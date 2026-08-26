@@ -18,11 +18,12 @@ function describeError(e: unknown): string {
   if (/AGENT_TIMEOUT/.test(message)) return "Локальный мост не ответил вовремя. Проверьте, что компьютер и браузер включены, и повторите попытку.";
   if (/RPC_METHOD_NOT_ALLOWED/.test(message)) return "Это действие недоступно через удалённый мост.";
   if (/DEVICE_REVOKED|DEVICE_UNKNOWN/.test(message)) return "Устройство отозвано или не сопряжено. Сопрягите его заново через Mini App.";
-  return message;
+  if (/RTS_NETWORK_ERROR|RTS_TIMEOUT|RTS_NAVIGATION_ERROR|RTS_UNAVAILABLE/.test(message)) return "Площадка РТС временно недоступна. Повторите попытку позже.";
+  return "Операция не выполнена. Проверьте подключение к РТС и повторите попытку.";
 }
 const bot = new Bot(botConfig.token);
 const pending = new Map<number, "search" | "watch" | "card" | "analyze" | "filter">();
-const favoriteTokens = new Map<string, string>();
+const favoriteTokens = new Map<string, { ownerId: number; url: string; expiresAt: number }>();
 const favoriteKey = (url: string) => Buffer.from(url).toString("base64url").slice(-24);
 const actor = new AsyncLocalStorage<number>();
 const call = async <T=unknown>(name:string,args:Record<string,unknown>={})=>{const id=actor.getStore();if(!id)throw new Error("Контекст пользователя отсутствует");assertRtsAccess(id);return callForUser<T>(id,name,args);};
@@ -88,7 +89,7 @@ bot.callbackQuery(/^profile:del:(.+)$/,async ctx=>{await removeProfile(ctx.from.
 bot.callbackQuery(/^watch:toggle:(.+)$/,async ctx=>{const w=await toggleWatch(ctx.from.id,ctx.match[1]);await ctx.answerCallbackQuery({text:w?.enabled?"Включён":"Приостановлен"});});
 bot.callbackQuery(/^device:revoke:(.+)$/,async ctx=>{try{assertOwner(ctx.from.id);const device=await revokeDevice(ctx.from.id,ctx.match[1]);if(!device)return void await ctx.answerCallbackQuery({text:"Устройство не найдено"});disconnectDevice(ctx.match[1]);await ctx.answerCallbackQuery({text:"Устройство отозвано"});await ctx.editMessageText("Устройство отозвано. Для повторного подключения выполните сопряжение заново.");}catch(e){await ctx.answerCallbackQuery({text:"Ошибка"});}});
 bot.callbackQuery(/^role:(operator|participant)$/, async ctx => { const role=ctx.match[1] as "operator"|"participant"; await setRole(ctx.from.id,role); await ctx.answerCallbackQuery({text:"Роль сохранена"}); await ctx.editMessageText(`Текущая роль: ${role === "operator" ? "заказчик / оператор" : "участник"}`); });
-bot.callbackQuery(/^fav:add:(.+)$/, async ctx => { const url=favoriteTokens.get(ctx.match[1]); if(!url) return void await ctx.answerCallbackQuery({text:"Кнопка устарела — откройте карточку снова"}); await addFavorite(ctx.from.id,url,url); await ctx.answerCallbackQuery({text:"Добавлено"}); });
+bot.callbackQuery(/^fav:add:(.+)$/, async ctx => { const entry=favoriteTokens.get(ctx.match[1]); if(!entry||entry.ownerId!==ctx.from.id||entry.expiresAt<Date.now()) return void await ctx.answerCallbackQuery({text:"Кнопка устарела — откройте карточку снова"}); favoriteTokens.delete(ctx.match[1]); await addFavorite(ctx.from.id,entry.url,entry.url); await ctx.answerCallbackQuery({text:"Добавлено"}); });
 bot.callbackQuery(/^fav:del:(.+)$/, async ctx => { const url=Object.keys(user(ctx.from.id).favorites).find(x=>favoriteKey(x)===ctx.match[1]); if(!url) return void await ctx.answerCallbackQuery({text:"Уже удалено"}); await removeFavorite(ctx.from.id,url); await ctx.answerCallbackQuery({text:"Удалено"}); await ctx.editMessageText("Удалено из избранного."); });
 
 bot.on("message:text", async ctx => {
@@ -110,7 +111,7 @@ async function runSearch(ctx:any, query:string) {
 async function runCard(ctx:any, url:string, analyze:boolean) {
   if (!url) { pending.set(ctx.from.id,analyze?"analyze":"card"); return ctx.reply("Пришлите URL карточки:"); }
   const wait=await ctx.reply(analyze?"Изучаю карточку и риски…":"Загружаю карточку…");
-  try { const data=await call<any>("rts_get_request",{url}); const body=analyze?await analyzeTender(data,user(ctx.from.id).role):`${data.title}\n\n${data.text}\n\nДокументов: ${data.documents?.length??0}`; const key=crypto.randomUUID().slice(0,12); favoriteTokens.set(key,data.url); await ctx.api.editMessageText(ctx.chat.id,wait.message_id,clip(esc(body)),{parse_mode:"HTML",reply_markup:new InlineKeyboard().text("⭐ В избранное",`fav:add:${key}`).url("Открыть на РТС",data.url),link_preview_options:{is_disabled:true}}); }
+  try { const data=await call<any>("rts_get_request",{url}); const body=analyze?await analyzeTender(data,user(ctx.from.id).role):`${data.title}\n\n${data.text}\n\nДокументов: ${data.documents?.length??0}`; const key=crypto.randomUUID().slice(0,12),now=Date.now(); for(const [token,entry] of favoriteTokens)if(entry.expiresAt<now)favoriteTokens.delete(token); while(favoriteTokens.size>=2_000)favoriteTokens.delete(favoriteTokens.keys().next().value!); favoriteTokens.set(key,{ownerId:ctx.from.id,url:data.url,expiresAt:now+60*60_000}); await ctx.api.editMessageText(ctx.chat.id,wait.message_id,clip(esc(body)),{parse_mode:"HTML",reply_markup:new InlineKeyboard().text("⭐ В избранное",`fav:add:${key}`).url("Открыть на РТС",data.url),link_preview_options:{is_disabled:true}}); }
   catch(e){ await ctx.api.editMessageText(ctx.chat.id,wait.message_id,`Ошибка: ${describeError(e)}`); }
 }
 async function showFavorites(ctx:any) { const rows=Object.values(user(ctx.from.id).favorites); if(!rows.length)return ctx.reply("Избранное пусто."); for(const row of rows.slice(0,30)){const key=favoriteKey(row.url); await ctx.reply(`<a href="${esc(row.url)}">${esc(row.title)}</a>`,{parse_mode:"HTML",reply_markup:new InlineKeyboard().text("Удалить",`fav:del:${key}`)});} }

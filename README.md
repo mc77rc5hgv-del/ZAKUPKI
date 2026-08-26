@@ -233,6 +233,7 @@ RTS_DOWNLOAD_DIR=/data/downloads
 RTS_SNAPSHOT_DIR=/data/snapshots
 OPENAI_API_KEY=...
 OPENAI_MODEL=gpt-5.4
+AI_ANALYSIS_ENABLED=false
 ```
 
 `pnpm-workspace.yaml` обязательно содержит `packages: ["."]`; без этого pnpm 9 в Railpack завершает установку ошибкой `packages field missing or empty`.

@@ -22,7 +22,7 @@ async function loadIdentity(): Promise<DeviceIdentity> {
   const file = path.join(botConfig.deviceDir, "device.json");
   try {
     const raw = JSON.parse(await fs.readFile(file, "utf8"));
-    if (typeof raw.deviceId !== "string" || typeof raw.accessToken !== "string") throw new Error("malformed");
+    if (typeof raw.deviceId !== "string" || typeof raw.accessToken !== "string" || !/^[A-Za-z0-9._:-]{8,128}$/.test(raw.deviceId) || !/^[A-Za-z0-9_-]{40,128}$/.test(raw.accessToken)) throw new Error("malformed");
     return { deviceId: raw.deviceId, accessToken: raw.accessToken };
   } catch {
     console.error("Локальное устройство не сопряжено.");

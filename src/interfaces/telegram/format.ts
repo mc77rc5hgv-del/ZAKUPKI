@@ -1,5 +1,5 @@
 export const clip = (text: string, max = 3900) => text.length <= max ? text : `${text.slice(0, max - 30)}\n…сообщение сокращено`;
-export const esc = (text: string) => text.replace(/[&<>]/g, x => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[x]!));
+export const esc = (text: string) => String(text).replace(/[&<>"']/g, x => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[x]!));
 export function requestList(rows: Array<{ title: string; url: string; summary?: string }>) {
   if (!rows.length) return "Ничего не найдено. Возможно, нужно вручную пройти защиту/вход через rts_session_status.";
   return rows.slice(0, 20).map((r, i) => `${i + 1}. <a href="${esc(r.url)}">${esc(r.title || "Запрос")}</a>\n${esc((r.summary ?? "").slice(0, 260))}`).join("\n\n");

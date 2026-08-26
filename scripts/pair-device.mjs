@@ -18,7 +18,7 @@ if (!hubUrl) {
   process.exit(1);
 }
 
-await fs.mkdir(deviceDir, { recursive: true });
+await fs.mkdir(deviceDir, { recursive: true, mode: 0o700 });
 let deviceId;
 try {
   const existing = JSON.parse(await fs.readFile(deviceFile, "utf8"));

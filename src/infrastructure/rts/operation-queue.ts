@@ -18,7 +18,8 @@ import { RtsError } from "./errors.js";
 // not a bug: it also means recovery from a truly wedged Playwright action
 // relies on Playwright's own per-action timeout (RTS_TIMEOUT_MS) eventually
 // rejecting the real task — this queue does not forcibly kill the browser.
-const QUEUE_TIMEOUT_MS = Math.max(200, Number(process.env.RTS_QUEUE_TIMEOUT_MS ?? 120_000));
+const configuredTimeout = Number(process.env.RTS_QUEUE_TIMEOUT_MS ?? 120_000);
+const QUEUE_TIMEOUT_MS = Number.isFinite(configuredTimeout) ? Math.max(200, Math.min(300_000, configuredTimeout)) : 120_000;
 
 let tail: Promise<void> = Promise.resolve();
 

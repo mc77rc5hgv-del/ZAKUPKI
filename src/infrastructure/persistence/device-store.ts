@@ -71,14 +71,21 @@ export async function redeemPairingCode(rawCode: string): Promise<{ ownerTelegra
 }
 
 export async function registerDevice(input: { deviceId: string; ownerTelegramId: number; token: string; displayName?: string; agentVersion?: string }): Promise<Device> {
+  if (!/^[A-Za-z0-9._:-]{8,128}$/.test(input.deviceId)) throw new Error("DEVICE_ID_INVALID");
+  if (!Number.isSafeInteger(input.ownerTelegramId) || input.ownerTelegramId <= 0) throw new Error("OWNER_ID_INVALID");
+  if (!/^[A-Za-z0-9_-]{40,128}$/.test(input.token)) throw new Error("DEVICE_TOKEN_INVALID");
   const now = new Date().toISOString();
+  const existing = findDevice(input.deviceId);
+  if (existing && existing.ownerTelegramId !== input.ownerTelegramId) {
+    throw new Error("DEVICE_ID_ALREADY_OWNED");
+  }
   const device: Device = {
     deviceId: input.deviceId,
     ownerTelegramId: input.ownerTelegramId,
     tokenHash: hashSecret(input.token),
-    displayName: (input.displayName ?? "Компьютер").slice(0, MAX_DISPLAY_NAME),
-    agentVersion: input.agentVersion?.slice(0, MAX_AGENT_VERSION),
-    createdAt: now,
+    displayName: (input.displayName ?? "Компьютер").replace(/[\x00-\x1f\x7f]/g, " ").trim().slice(0, MAX_DISPLAY_NAME) || "Компьютер",
+    agentVersion: input.agentVersion?.replace(/[\x00-\x1f\x7f]/g, "").trim().slice(0, MAX_AGENT_VERSION),
+    createdAt: existing?.createdAt ?? now,
     revokedAt: undefined,
   };
   db.devices = db.devices.filter(d => d.deviceId !== input.deviceId);

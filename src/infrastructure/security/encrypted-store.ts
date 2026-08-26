@@ -10,6 +10,7 @@ import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 // therefore never leave a second plaintext copy beside the active store.
 
 const FORMAT_VERSION = 1;
+const writeQueues = new Map<string, Promise<void>>();
 type EncryptedEnvelope = { __encrypted: true; v: number; iv: string; tag: string; data: string };
 
 function isEnvelope(value: unknown): value is EncryptedEnvelope {
@@ -54,6 +55,13 @@ export async function readStoreFile<T>(file: string, fallback: T): Promise<T> {
 }
 
 export async function writeStoreFile(file: string, value: unknown): Promise<void> {
+  const previous = writeQueues.get(file) ?? Promise.resolve();
+  const queued = previous.catch(() => undefined).then(() => writeStoreFileNow(file, value));
+  writeQueues.set(file, queued);
+  try { await queued; } finally { if (writeQueues.get(file) === queued) writeQueues.delete(file); }
+}
+
+async function writeStoreFileNow(file: string, value: unknown): Promise<void> {
   const key = loadKey();
   if (key) {
     await encryptLegacyBackups(file, key);

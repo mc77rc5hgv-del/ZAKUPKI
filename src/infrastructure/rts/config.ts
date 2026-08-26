@@ -4,6 +4,7 @@ const bool = (value: string | undefined, fallback: boolean) =>
   value === undefined ? fallback : /^(1|true|yes)$/i.test(value);
 
 const optional = (value: string | undefined) => value?.trim() || undefined;
+const number = (value: string | undefined, fallback: number, min: number, max: number) => { const parsed = Number(value ?? fallback); return Number.isFinite(parsed) ? Math.max(min, Math.min(max, parsed)) : fallback; };
 const proxyServer = optional(process.env.RTS_PROXY_SERVER);
 const cdpUrl = optional(process.env.RTS_CDP_URL);
 
@@ -28,8 +29,8 @@ export const config = {
   profileDir: path.resolve(process.env.RTS_PROFILE_DIR ?? ".rts-profile"),
   downloadDir: path.resolve(process.env.RTS_DOWNLOAD_DIR ?? "downloads"),
   snapshotDir: path.resolve(process.env.RTS_SNAPSHOT_DIR ?? ".rts-snapshots"),
-  timeoutMs: Number(process.env.RTS_TIMEOUT_MS ?? 30_000),
-  navigationRetries: Math.max(1, Number(process.env.RTS_NAVIGATION_RETRIES ?? 3)),
+  timeoutMs: number(process.env.RTS_TIMEOUT_MS, 30_000, 1_000, 120_000),
+  navigationRetries: Math.round(number(process.env.RTS_NAVIGATION_RETRIES, 3, 1, 10)),
   proxy: proxyServer
     ? {
         server: proxyServer,

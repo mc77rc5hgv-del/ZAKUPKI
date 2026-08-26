@@ -19,4 +19,8 @@ assert.deepEqual(safeRpcError({ code: "RTS_TIMEOUT", message: "private path" }),
   code: "RTS_TIMEOUT", message: "РТС не ответил вовремя. Повторите попытку.",
 });
 assert.equal(isAllowedRpcMethod("rts_forget_profile"), false, "profile deletion must never be relayed through Railway");
+let deep = "leaf";
+for (let i = 0; i < 50; i++) deep = { child: deep };
+assert.match(JSON.stringify(sanitizeRpcResult(deep)), /TRUNCATED_DEPTH/);
+assert.equal(sanitizeRpcResult("x".repeat(250_000)).length, 200_000);
 console.log("rpc safety: ok");
