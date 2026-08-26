@@ -23,8 +23,20 @@ const fail = (error: unknown) => ({ isError: true, content: [{ type: "text" as c
 const queuedTool = (name: string, description: string, shape: any, handler: (args: any) => Promise<any>) =>
   server.tool(name, description, shape, ((args: any) => withPageQueue(() => handler(args))) as any);
 
-queuedTool("rts_session_status", "Open the persistent RTS browser session and report login/Anti-DDoS state. Login and CAPTCHA must be completed manually in the opened browser.", {}, async () => {
-  try { await open(); return text(await status()); } catch (e) { return fail(e); }
+queuedTool("rts_session_status", "Open the persistent RTS browser session and report login/Anti-DDoS state. Login and CAPTCHA must be completed manually in the opened browser.", {
+  openLogin: z.boolean().default(false).describe("Bring the connected browser to the RTS login page when the session is not authenticated"),
+}, async ({ openLogin }) => {
+  try {
+    let session = await status();
+    if (openLogin) {
+      const p = session.likelyLoggedIn
+        ? await getPage()
+        : await open(`/authorization/login?appUrl=${encodeURIComponent(`${config.baseUrl}/search/sell`)}`);
+      await p.bringToFront();
+      session = await status();
+    }
+    return text(session);
+  } catch (e) { return fail(e); }
 });
 
 queuedTool("rts_open", "Navigate inside krd-market.rts-tender.ru and return a safe visible-page snapshot.", {

@@ -82,10 +82,14 @@ try {
   assert.equal(helloReply.type, "hello_ok");
 
   let messagesReceived = 0;
+  let lastRpc;
   agent.on("message", raw => {
     messagesReceived += 1;
     const msg = JSON.parse(String(raw));
-    if (msg.type === "rpc") agent.send(JSON.stringify({ type: "rpc_result", id: msg.id, ok: true, result: { echoedMethod: msg.method } }));
+    if (msg.type === "rpc") {
+      lastRpc = msg;
+      agent.send(JSON.stringify({ type: "rpc_result", id: msg.id, ok: true, result: { echoedMethod: msg.method, likelyLoggedIn:false, antiDdos:false, headed:true } }));
+    }
   });
 
   // an allowed method reaches the agent and its result flows back through call()
@@ -93,9 +97,18 @@ try {
   assert.equal(allowedResult.echoedMethod, "rts_session_status");
   assert.equal(messagesReceived, 1);
 
+  // The login button must explicitly ask the local browser to open the RTS
+  // login page; a plain status poll cannot bring the user's browser forward.
+  const openResponse = await fetch(`${base}/api/connection/open`, { method:"POST", headers:{...ownerHeaders,"content-type":"application/json"}, body:"{}" });
+  assert.equal(openResponse.status,200);
+  assert.equal((await openResponse.json()).data.opened,true);
+  assert.equal(lastRpc.method,"rts_session_status");
+  assert.equal(lastRpc.params.openLogin,true);
+  assert.equal(messagesReceived,2);
+
   // a disallowed method must be rejected by the hub itself — the agent never even sees it
   await assert.rejects(() => call("rts_act", { action: "click", selector: "#x" }), /RPC_METHOD_NOT_ALLOWED/);
-  assert.equal(messagesReceived, 1, "the agent must not receive a disallowed method");
+  assert.equal(messagesReceived, 2, "the agent must not receive a disallowed method");
 
   console.log("rpc auth: ok");
 } finally {
