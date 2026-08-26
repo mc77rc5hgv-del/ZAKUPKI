@@ -8,6 +8,8 @@ import { botConfig } from "../config/bot.js";
 import { call } from "../application/mcp-client.js";
 import { isAllowedRpcMethod } from "../application/rpc-allowlist.js";
 import { createReplayGuard } from "../application/replay-guard.js";
+import { safeRpcError, sanitizeRpcResult } from "../application/rpc-safety.js";
+import { toAgentWebSocketUrl } from "../infrastructure/security/transport-url.js";
 
 await loadEnvFile();
 
@@ -33,12 +35,7 @@ async function loadIdentity(): Promise<DeviceIdentity> {
 function hubUrl(): string {
   const raw = process.env.AGENT_HUB_URL || botConfig.miniAppUrl;
   if (!raw) throw new Error("Задайте AGENT_HUB_URL (или MINIAPP_URL) — адрес развёрнутого моста Railway.");
-  const url = new URL(raw);
-  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-  url.pathname = "/agent/socket";
-  url.search = "";
-  url.hash = "";
-  return url.href;
+  return toAgentWebSocketUrl(raw);
 }
 
 const replayGuard = createReplayGuard();
@@ -57,10 +54,10 @@ async function handleRpc(ws: WebSocket, msg: { id: string; method: string; param
   const startedAt = Date.now();
   try {
     const result = await call(method, params ?? {});
-    respond({ ok: true, result });
+    respond({ ok: true, result: sanitizeRpcResult(result) });
     log("rpc_executed", { method, ok: true, durationMs: Date.now() - startedAt });
   } catch (error) {
-    respond({ ok: false, error: { code: "RPC_FAILED", message: error instanceof Error ? error.message : String(error) } });
+    respond({ ok: false, error: safeRpcError(error) });
     log("rpc_executed", { method, ok: false, durationMs: Date.now() - startedAt });
   }
 }

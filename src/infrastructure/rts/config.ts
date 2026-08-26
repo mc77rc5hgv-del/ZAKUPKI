@@ -10,6 +10,7 @@ export const config = {
   baseUrl: new URL(process.env.RTS_BASE_URL ?? "https://krd-market.rts-tender.ru").origin,
   headless: bool(process.env.RTS_HEADLESS, false),
   allowWrites: bool(process.env.RTS_ALLOW_WRITES, false),
+  allowProfileDeletion: bool(process.env.RTS_ALLOW_PROFILE_DELETION, false),
   profileDir: path.resolve(process.env.RTS_PROFILE_DIR ?? ".rts-profile"),
   downloadDir: path.resolve(process.env.RTS_DOWNLOAD_DIR ?? "downloads"),
   snapshotDir: path.resolve(process.env.RTS_SNAPSHOT_DIR ?? ".rts-snapshots"),

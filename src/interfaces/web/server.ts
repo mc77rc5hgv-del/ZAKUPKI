@@ -27,7 +27,7 @@ const routes=new Map<string,(ctx:RequestContext)=>Promise<unknown>>([
   ["POST /api/connection/open",async ctx=>{assertRtsAccess(ctx.user.id);const session=await call<any>("rts_session_status");return {opened:true,connected:Boolean(session.likelyLoggedIn&&!session.antiDdos),antiDdos:Boolean(session.antiDdos),headed:Boolean(session.headed)};}],
   ["POST /api/connection/check",async ctx=>{assertRtsAccess(ctx.user.id);const session=await call<any>("rts_session_status");return {connected:Boolean(session.likelyLoggedIn&&!session.antiDdos),antiDdos:Boolean(session.antiDdos),headed:Boolean(session.headed)};}],
   ["POST /api/connection/disconnect",async ctx=>{assertOwner(ctx.user.id);await call("rts_close");return {disconnected:true};}],
-  ["POST /api/connection/forget",async ctx=>{assertOwner(ctx.user.id);if(ctx.body.confirm!==true)throw new Error("Требуется явное подтверждение удаления профиля");await call("rts_forget_profile");return {forgotten:true};}],
+  ["POST /api/connection/forget",async ctx=>{assertOwner(ctx.user.id);if(ctx.body.confirm!==true)throw new Error("Требуется явное подтверждение удаления профиля");await call("rts_forget_profile",{confirm:"DELETE_RTS_PROFILE"});return {forgotten:true};}],
   ["POST /api/connection/devices/pair/start",async ctx=>{assertOwner(ctx.user.id);return createPairingCode(ctx.user.id);}],
   ["GET /api/connection/devices",async ctx=>{assertOwner(ctx.user.id);const activeDeviceId=connectedDeviceId(ctx.user.id);return devicesForOwner(ctx.user.id).map(d=>({...publicDevice(d),online:d.deviceId===activeDeviceId}));}],
   ["POST /api/connection/devices/revoke",async ctx=>{assertOwner(ctx.user.id);const deviceId=String(ctx.body.deviceId??"");const device=await revokeDevice(ctx.user.id,deviceId);if(!device)throw new Error("Устройство не найдено");disconnectDevice(deviceId);return {revoked:true};}],
@@ -81,14 +81,25 @@ async function handleDevicePair(req:IncomingMessage,res:ServerResponse){
   }catch(error){console.error("device pairing failed",error instanceof Error?error.name:"Error");return json(res,400,{ok:false,error:{code:"PAIRING_FAILED",message:"Не удалось выполнить сопряжение",retryable:true}});}
 }
 
-function publicError(error:unknown){
+export function publicError(error:unknown){
   const message=error instanceof Error?error.message:String(error);
+  const safeCodes:Record<string,string>={
+    AGENT_OFFLINE:"Подключённый компьютер не в сети. Запустите локальный агент и повторите попытку.",
+    AGENT_TIMEOUT:"Локальный агент не ответил вовремя. Повторите попытку.",
+    AGENT_DISCONNECTED:"Соединение с локальным агентом прервано.",
+    DEVICE_REVOKED:"Доступ подключённого компьютера отозван.",
+    RPC_FAILED:"Локальный агент не смог выполнить операцию.",
+    RPC_METHOD_NOT_ALLOWED:"Команда не разрешена политикой моста.",
+    RTS_NETWORK_ERROR:"Сетевая ошибка при обращении к РТС. Повторите попытку.",
+    RTS_TIMEOUT:"РТС не ответил вовремя. Повторите попытку.",
+    RTS_NAVIGATION_ERROR:"Не удалось открыть страницу РТС. Повторите попытку.",
+    RTS_UNAVAILABLE:"РТС временно недоступен после повторных сбоев.",
+    RTS_QUEUE_TIMEOUT:"Браузер занят предыдущей операцией. Повторите попытку.",
+  };
+  if(safeCodes[message])return safeCodes[message];
   if(/владелец|принадлежит другому|облачная авторизация/i.test(message))return message;
   if(/Telegram|подпись|список доступа|сессия Telegram/i.test(message))return message;
   if(/устройств|подтверждени/i.test(message))return message;
-  // RtsError messages (network/timeout/circuit-breaker/queue) are pre-written,
-  // static Russian text with no interpolated internals — safe to pass through.
-  if(/РТС|браузер/i.test(message))return message;
   return "Операция не выполнена. Проверьте подключение к РТС и повторите попытку.";
 }
 

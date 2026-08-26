@@ -30,5 +30,7 @@ export const RPC_METHODS = new Set([
 export const DESTRUCTIVE_RPC_METHODS = new Set(["rts_forget_profile"]);
 
 export function isAllowedRpcMethod(method: string): boolean {
-  return RPC_METHODS.has(method) || DESTRUCTIVE_RPC_METHODS.has(method);
+  // Destructive methods are intentionally never relayed through Railway. They
+  // can only run in local transport with the additional MCP/config safeguards.
+  return RPC_METHODS.has(method);
 }

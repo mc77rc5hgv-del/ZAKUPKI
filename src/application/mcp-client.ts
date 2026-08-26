@@ -2,6 +2,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { botConfig } from "../config/bot.js";
 import { sendRpc } from "../infrastructure/agent-hub/server.js";
+import { sanitizeRpcResult } from "./rpc-safety.js";
 
 let client: Client | undefined;
 let connecting: Promise<Client> | undefined;
@@ -31,7 +32,7 @@ async function callLocal<T>(name: string, args: Record<string, unknown>): Promis
   const result = await (await mcp()).callTool({ name, arguments: args });
   if (result.isError) throw new Error((result.content as Array<{ text?: string }>).map(x => x.text).filter(Boolean).join("\n"));
   const raw = (result.content as Array<{ type: string; text?: string }>).find(x => x.type === "text")?.text ?? "null";
-  return JSON.parse(raw) as T;
+  return sanitizeRpcResult(JSON.parse(raw)) as T;
 }
 /** Single entry point used by every interface (Telegram bot, Mini App, monitor).
  * In "local" transport this spawns/reuses the MCP subprocess and its Chromium

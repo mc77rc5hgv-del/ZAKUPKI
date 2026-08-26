@@ -1,11 +1,15 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import os from "node:os";
 import { chromium, type BrowserContext, type Page } from "playwright";
 import { config, portalUrl } from "./config.js";
 import { RtsError, classifyNavigationError, describeRtsErrorCode } from "./errors.js";
 
 let context: BrowserContext | undefined;
 let page: Page | undefined;
+const PROFILE_MARKER = ".zakupki-rts-profile.json";
+const PROFILE_MARKER_MAGIC = "zakupki-rts-browser-profile-v1";
+export const PROFILE_DELETE_CONFIRMATION = "DELETE_RTS_PROFILE";
 const transientNavigationError =
   /ERR_(CONNECTION_RESET|CONNECTION_CLOSED|NETWORK_CHANGED|TIMED_OUT)|Navigation timeout/i;
 
@@ -53,7 +57,7 @@ async function navigate(page: Page, target: string) {
 
 export async function getPage(): Promise<Page> {
   if (page && !page.isClosed()) return page;
-  await fs.mkdir(config.profileDir, { recursive: true });
+  await ensureOwnedProfileDirectory(config.profileDir);
   await fs.mkdir(config.downloadDir, { recursive: true });
   context = await chromium.launchPersistentContext(config.profileDir, {
     headless: config.headless,
@@ -89,9 +93,42 @@ export async function closeBrowser() {
   await context?.close(); context = undefined; page = undefined;
 }
 
-export async function forgetProfile() {
+export async function forgetProfile(confirm: string) {
+  if (!config.allowProfileDeletion) throw new Error("Удаление профиля отключено. Задайте RTS_ALLOW_PROFILE_DELETION=true только на локальном агенте.");
+  if (confirm !== PROFILE_DELETE_CONFIRMATION) throw new Error(`Для удаления профиля требуется подтверждение ${PROFILE_DELETE_CONFIRMATION}.`);
+  const profileDir = assertSafeProfileDirectory(config.profileDir);
+  await assertOwnedProfileDirectory(profileDir);
   await closeBrowser();
-  await fs.rm(config.profileDir, { recursive: true, force: true });
+  await fs.rm(profileDir, { recursive: true });
+}
+
+function assertSafeProfileDirectory(input: string): string {
+  const resolved = path.resolve(input);
+  const root = path.parse(resolved).root;
+  const forbidden = new Set([path.resolve(root), path.resolve(os.homedir()), path.resolve(process.cwd())]);
+  if (forbidden.has(resolved)) throw new Error("RTS_PROFILE_DIR указывает на небезопасный системный или рабочий каталог.");
+  if (!path.basename(resolved) || [".", ".."].includes(path.basename(resolved))) throw new Error("Некорректный RTS_PROFILE_DIR.");
+  return resolved;
+}
+
+async function assertOwnedProfileDirectory(profileDir: string): Promise<void> {
+  let marker: unknown;
+  try { marker = JSON.parse(await fs.readFile(path.join(profileDir, PROFILE_MARKER), "utf8")); }
+  catch { throw new Error("Профиль не помечен как созданный ZAKUPKI; удаление запрещено."); }
+  if ((marker as { magic?: unknown })?.magic !== PROFILE_MARKER_MAGIC) throw new Error("Маркер профиля ZAKUPKI недействителен; удаление запрещено.");
+}
+
+async function ensureOwnedProfileDirectory(input: string): Promise<void> {
+  const profileDir = assertSafeProfileDirectory(input);
+  await fs.mkdir(profileDir, { recursive: true });
+  const markerPath = path.join(profileDir, PROFILE_MARKER);
+  try { await assertOwnedProfileDirectory(profileDir); return; } catch { /* initialize only a dedicated/empty directory */ }
+  const entries = await fs.readdir(profileDir);
+  const safeLegacyNames = new Set([".rts-profile", "rts-profile", "rts_profile"]);
+  if (entries.length > 0 && !safeLegacyNames.has(path.basename(profileDir).toLowerCase())) {
+    throw new Error("Непустой RTS_PROFILE_DIR не принадлежит ZAKUPKI. Выберите отдельный каталог rts-profile.");
+  }
+  await fs.writeFile(markerPath, JSON.stringify({ magic: PROFILE_MARKER_MAGIC, createdAt: new Date().toISOString() }, null, 2), { encoding: "utf8", mode: 0o600 });
 }
 
 export function safeDownloadPath(suggested: string): string {

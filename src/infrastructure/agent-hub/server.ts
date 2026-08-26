@@ -4,6 +4,7 @@ import { WebSocketServer, WebSocket, type RawData } from "ws";
 import { findDevice, touchDevice } from "../persistence/device-store.js";
 import { secretMatches } from "../security/pairing.js";
 import { isAllowedRpcMethod } from "../../application/rpc-allowlist.js";
+import { safeRpcError } from "../../application/rpc-safety.js";
 
 const MAX_PAYLOAD_BYTES = 8 * 1024 * 1024;
 const HELLO_TIMEOUT_MS = 10_000;
@@ -83,7 +84,7 @@ export async function sendRpc<T = unknown>(ownerTelegramId: number, method: stri
     log("rpc", { ownerTelegramId, deviceId: connection.deviceId, method, ok: true, durationMs: Date.now() - startedAt });
     return result;
   } catch (error) {
-    log("rpc", { ownerTelegramId, deviceId: connection.deviceId, method, ok: false, durationMs: Date.now() - startedAt, error: error instanceof Error ? error.message : String(error) });
+    log("rpc", { ownerTelegramId, deviceId: connection.deviceId, method, ok: false, durationMs: Date.now() - startedAt, errorCode: error instanceof Error ? error.message : "RPC_FAILED" });
     throw error;
   }
 }
@@ -98,7 +99,7 @@ function handleMessage(connection: Connection, raw: RawData) {
     connection.pending.delete(msg.id);
     clearTimeout(pending.timer);
     if (msg.ok) pending.resolve(msg.result);
-    else pending.reject(new Error(msg?.error?.message || msg?.error?.code || "RPC_FAILED"));
+    else pending.reject(new Error(safeRpcError(msg?.error).code));
   }
 }
 

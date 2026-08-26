@@ -2,7 +2,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { closeBrowser, forgetProfile, getPage, open, safeDownloadPath, status } from "../../infrastructure/rts/browser.js";
+import { closeBrowser, forgetProfile, getPage, open, PROFILE_DELETE_CONFIRMATION, safeDownloadPath, status } from "../../infrastructure/rts/browser.js";
 import { config, portalUrl } from "../../infrastructure/rts/config.js";
 import { extractRequestPages, extractRequests, visibleSnapshot } from "../../infrastructure/rts/extract.js";
 import { analyzeDeterministic, filterTenders, normalizeTender } from "../../domain/procurement.js";
@@ -153,7 +153,9 @@ queuedTool("rts_screenshot", "Save a screenshot of the current portal page.", { 
 
 queuedTool("rts_close", "Close the local browser session (profile remains on disk).", {}, async () => { await closeBrowser(); return text({ closed: true }); });
 
-queuedTool("rts_forget_profile", "Close the browser and permanently delete the local persistent profile directory. Requires a fresh manual login afterwards. Irreversible.", {}, async () => { try { await forgetProfile(); return text({ forgotten: true }); } catch (e) { return fail(e); } });
+queuedTool("rts_forget_profile", "Close the browser and permanently delete the dedicated local profile. Disabled unless RTS_ALLOW_PROFILE_DELETION=true and an exact confirmation is supplied.", {
+  confirm: z.literal(PROFILE_DELETE_CONFIRMATION),
+}, async ({ confirm }) => { try { await forgetProfile(confirm); return text({ forgotten: true }); } catch (e) { return fail(e); } });
 
 process.on("SIGINT", async () => { await closeBrowser(); process.exit(0); });
 await server.connect(new StdioServerTransport());

@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { assertSecureHubHttpUrl } from "../dist/infrastructure/security/transport-url.js";
 
 const code = process.argv[2] ?? process.env.PAIR_CODE ?? "";
 const hubUrl = process.argv[3] ?? process.env.AGENT_HUB_URL ?? process.env.MINIAPP_URL ?? "";
@@ -25,7 +26,7 @@ try {
 } catch { /* no existing identity yet */ }
 deviceId ??= crypto.randomUUID();
 
-const endpoint = new URL("/api/connection/devices/pair", hubUrl).href;
+const endpoint = new URL("/api/connection/devices/pair", assertSecureHubHttpUrl(hubUrl)).href;
 console.log(`Сопрягаю это устройство с ${endpoint} …`);
 
 const response = await fetch(endpoint, {

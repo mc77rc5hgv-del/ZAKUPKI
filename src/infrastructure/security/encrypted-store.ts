@@ -1,11 +1,13 @@
 import fs from "node:fs/promises";
+import path from "node:path";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
 // At-rest encryption for the small JSON stores under BOT_DATA_DIR (bot.json,
 // devices.json). Encryption only activates when DATA_ENCRYPTION_KEY is set —
 // deployments that don't set it keep today's plaintext behavior. Once a key is
 // configured, the next write transparently migrates a plaintext file to the
-// encrypted envelope and keeps a backup of the plaintext content next to it.
+// encrypted envelope. Migration backups use the same AES-GCM envelope and
+// therefore never leave a second plaintext copy beside the active store.
 
 const FORMAT_VERSION = 1;
 type EncryptedEnvelope = { __encrypted: true; v: number; iv: string; tag: string; data: string };
@@ -53,18 +55,41 @@ export async function readStoreFile<T>(file: string, fallback: T): Promise<T> {
 
 export async function writeStoreFile(file: string, value: unknown): Promise<void> {
   const key = loadKey();
-  if (key) await backupPlaintextOnFirstMigration(file);
+  if (key) {
+    await encryptLegacyBackups(file, key);
+    await backupPlaintextOnFirstMigration(file, key);
+  }
   const serialized = JSON.stringify(value, null, 2);
   const payload = key ? JSON.stringify(encrypt(serialized, key), null, 2) : serialized;
   const temp = `${file}.tmp`;
-  await fs.writeFile(temp, payload, "utf8");
+  await fs.writeFile(temp, payload, { encoding: "utf8", mode: 0o600 });
   await fs.rename(temp, file);
+  await fs.chmod(file, 0o600).catch(() => {});
 }
 
-async function backupPlaintextOnFirstMigration(file: string): Promise<void> {
+async function backupPlaintextOnFirstMigration(file: string, key: Buffer): Promise<void> {
   const previous = await fs.readFile(file, "utf8").catch(() => undefined);
   if (previous === undefined) return; // nothing to migrate yet
   let alreadyEncrypted = false;
   try { alreadyEncrypted = isEnvelope(JSON.parse(previous)); } catch { /* corrupt/plaintext — back it up as-is */ }
-  if (!alreadyEncrypted) await fs.writeFile(`${file}.bak-${Date.now()}`, previous, "utf8");
+  if (!alreadyEncrypted) {
+    const backup = JSON.stringify(encrypt(previous, key), null, 2);
+    await fs.writeFile(`${file}.bak-${Date.now()}.enc`, backup, { encoding: "utf8", mode: 0o600 });
+  }
+}
+
+async function encryptLegacyBackups(file: string, key: Buffer): Promise<void> {
+  const directory = path.dirname(file);
+  const prefix = `${path.basename(file)}.bak-`;
+  const names = await fs.readdir(directory).catch(() => []);
+  for (const name of names) {
+    if (!name.startsWith(prefix)) continue;
+    const backupPath = path.join(directory, name);
+    const raw = await fs.readFile(backupPath, "utf8").catch(() => undefined);
+    if (raw === undefined) continue;
+    try { if (isEnvelope(JSON.parse(raw))) continue; } catch { /* legacy plaintext or malformed JSON */ }
+    const temp = `${backupPath}.tmp`;
+    await fs.writeFile(temp, JSON.stringify(encrypt(raw, key), null, 2), { encoding: "utf8", mode: 0o600 });
+    await fs.rename(temp, backupPath);
+  }
 }
