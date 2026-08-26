@@ -7,5 +7,6 @@ dist/
 .bot-data/
 downloads/
 .rts-snapshots/
+.rts-history/
 *.log
 .env

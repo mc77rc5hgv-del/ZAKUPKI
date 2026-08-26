@@ -6,6 +6,6 @@ const transport = new StdioClientTransport({ command: node, args: ["dist/entrypo
 const client = new Client({ name: "smoke", version: "1.0.0" });
 await client.connect(transport);
 const { tools } = await client.listTools();
-if (tools.length !== 24) throw new Error(`Expected 24 tools, received ${tools.length}`);
+if (tools.length !== 25) throw new Error(`Expected 25 tools, received ${tools.length}`);
 console.log(tools.map(tool => tool.name).join("\n"));
 await client.close();

@@ -13,6 +13,7 @@ import { compareDossiers } from "../../domain/dossier.js";
 import { prepareOfferDraft } from "../../infrastructure/rts/offer-draft.js";
 import { assessReadiness, buildWorkplan, calculateBidEconomics } from "../../domain/participation.js";
 import { withPageQueue } from "../../infrastructure/rts/operation-queue.js";
+import { priceStatistics, recordObservedTenders } from "../../infrastructure/rts/tender-history.js";
 import { assertSafeBrowserAction } from "../../application/action-policy.js";
 
 const server = new McpServer({ name: "krd-market-rts", version: "0.1.0" });
@@ -77,6 +78,7 @@ queuedTool("rts_search_advanced", "Search requests and apply normalized tender f
     }
     const raw = await extractRequestPages(p, scanLimit);
     const tenders = filterTenders(raw.map(x => normalizeTender(x)), filter).slice(0, resultLimit);
+    await recordObservedTenders(tenders).catch(() => {});
     return text({ url: p.url(), scanned: raw.length, count: tenders.length, filter, tenders });
   } catch (e) { return fail(e); }
 });
@@ -118,6 +120,16 @@ queuedTool("rts_assess_readiness", "Assess operational readiness to participate:
 queuedTool("rts_bid_economics", "Calculate break-even price, target bid, profit, margin and maximum safe discount.",{startingPrice:z.number().positive(),directCosts:z.number().nonnegative(),logistics:z.number().nonnegative().optional(),overheads:z.number().nonnegative().optional(),guaranteeCost:z.number().nonnegative().optional(),financingCost:z.number().nonnegative().optional(),otherCosts:z.number().nonnegative().optional(),taxPercent:z.number().min(0).max(100).optional(),contingencyPercent:z.number().min(0).max(100).optional(),targetProfitPercent:z.number().min(0).max(100).optional()},async input=>{try{return text(calculateBidEconomics(input));}catch(e){return fail(e);}});
 
 queuedTool("rts_build_workplan", "Build a backward preparation plan from the tender submission deadline with owners and internal due dates.",{url:z.string()},async({url})=>{try{const p=await open(url);const dossier=await buildDossier(p);return text({dossier,workplan:buildWorkplan(dossier)});}catch(e){return fail(e);}});
+
+// Read-only aggregate over tenders this agent has already observed via search
+// or a dossier build (see tender-history.ts). Does not touch the browser page,
+// so it is registered outside the page queue and never waits behind a slow
+// navigation.
+server.tool("rts_price_stats", "Price statistics (min/avg/median/max, count) over tenders this agent has already seen via search or dossier — not a full-portal crawl, and no participant/discount data is available.", {
+  okpd2: z.string().optional(), customer: z.string().optional(), query: z.string().optional(),
+}, (async (args: { okpd2?: string; customer?: string; query?: string }) => {
+  try { const stats = await priceStatistics(args); return text({ stats: stats ?? null }); } catch (e) { return fail(e); }
+}) as any);
 
 queuedTool("rts_extract_tables", "Extract visible tables from a same-origin RTS page as structured rows.", {url:z.string()},async({url})=>{try{const p=await open(url);const inventory=await inspectPortal(p);return text({url:p.url(),title:inventory.title,tables:inventory.tables});}catch(e){return fail(e);}});
 
