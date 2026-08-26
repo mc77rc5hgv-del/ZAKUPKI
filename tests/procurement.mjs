@@ -14,9 +14,14 @@ assert.equal(tender.daysLeft, 6);
 assert.deepEqual(tender.okpd2, ["26.20.11"]);
 assert.equal(filterTenders([tender], { includeKeywords:["ноутбук"], excludeKeywords:["ремонт"], minPrice:1_000_000, maxPrice:2_000_000, location:"Краснодар", okpd2:["26.20"], maxDaysLeft:10 }).length, 1);
 assert.equal(filterTenders([tender], { excludeKeywords:["ноутбук"] }).length, 0);
+const districtTender = normalizeTender({ title:"Ремонт школы", url:"https://krd-market.rts-tender.ru/zapros/124", summary:"Место поставки: Каневской район, станица Каневская" }, now);
+assert.equal(filterTenders([districtTender], { districts:["Каневской район"] }).length, 1);
+assert.equal(filterTenders([districtTender], { districts:["Динской район"] }).length, 0);
+assert.equal(filterTenders([districtTender], { districts:["Динской район","Каневской район"] }).length, 1, "several districts use OR matching");
 assert.ok(analyzeDeterministic(tender).completeness >= 80);
 assert.deepEqual(parseFilter("ключи=ноутбук, компьютер; исключить=ремонт; минцена=100000; максцена=2000000; дней=3-20; документы=да; сорт=срок"), {
   includeKeywords:["ноутбук","компьютер"], excludeKeywords:["ремонт"], minPrice:100000, maxPrice:2000000,
   minDaysLeft:3, maxDaysLeft:20, requireDocuments:true, sort:"deadline_asc",
 });
+assert.deepEqual(parseFilter("район=Каневской район, Динской район"), { districts:["Каневской район","Динской район"] });
 console.log("procurement filters: ok");
