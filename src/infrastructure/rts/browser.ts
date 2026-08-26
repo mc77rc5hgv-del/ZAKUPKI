@@ -1,12 +1,13 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import { chromium, type BrowserContext, type Page } from "playwright";
+import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 import { config, portalUrl } from "./config.js";
 import { RtsError, classifyNavigationError, describeRtsErrorCode } from "./errors.js";
 
 let context: BrowserContext | undefined;
 let page: Page | undefined;
+let externalBrowser: Browser | undefined;
 const PROFILE_MARKER = ".zakupki-rts-profile.json";
 const PROFILE_MARKER_MAGIC = "zakupki-rts-browser-profile-v1";
 export const PROFILE_DELETE_CONFIRMATION = "DELETE_RTS_PROFILE";
@@ -57,15 +58,22 @@ async function navigate(page: Page, target: string) {
 
 export async function getPage(): Promise<Page> {
   if (page && !page.isClosed()) return page;
-  await ensureOwnedProfileDirectory(config.profileDir);
   await fs.mkdir(config.downloadDir, { recursive: true });
-  context = await chromium.launchPersistentContext(config.profileDir, {
-    headless: config.headless,
-    acceptDownloads: true,
-    viewport: { width: 1440, height: 1000 },
-    locale: "ru-RU",
-    proxy: config.proxy,
-  });
+  if (config.cdpUrl) {
+    externalBrowser = await chromium.connectOverCDP(config.cdpUrl);
+    context = externalBrowser.contexts()[0];
+    if (!context) throw new Error("В локальном Chrome не найден активный профиль.");
+  } else {
+    await ensureOwnedProfileDirectory(config.profileDir);
+    context = await chromium.launchPersistentContext(config.profileDir, {
+      channel: config.browserChannel,
+      headless: config.headless,
+      acceptDownloads: true,
+      viewport: { width: 1440, height: 1000 },
+      locale: "ru-RU",
+      proxy: config.proxy,
+    });
+  }
   context.setDefaultTimeout(config.timeoutMs);
   page = context.pages()[0] ?? (await context.newPage());
   return page;
@@ -85,15 +93,20 @@ export async function status() {
     url: p.url(), title: await p.title(),
     antiDdos: /Anti-DDoS|Проверяем ваш браузер/i.test(body),
     likelyLoggedIn: /выйти|личный кабинет|мои (заявки|предложения)/i.test(body),
-    headed: !config.headless,
+    headed: config.cdpUrl ? true : !config.headless,
+    connectionMode: config.cdpUrl ? "existing_chrome" : "managed_profile",
   };
 }
 
 export async function closeBrowser() {
-  await context?.close(); context = undefined; page = undefined;
+  if (!config.cdpUrl) await context?.close();
+  // In CDP mode Chrome belongs to the user. Never close that browser window;
+  // only forget local references so a later command can reconnect.
+  context = undefined; page = undefined; externalBrowser = undefined;
 }
 
 export async function forgetProfile(confirm: string) {
+  if (config.cdpUrl) throw new Error("Профиль внешнего Chrome нельзя удалить через мост.");
   if (!config.allowProfileDeletion) throw new Error("Удаление профиля отключено. Задайте RTS_ALLOW_PROFILE_DELETION=true только на локальном агенте.");
   if (confirm !== PROFILE_DELETE_CONFIRMATION) throw new Error(`Для удаления профиля требуется подтверждение ${PROFILE_DELETE_CONFIRMATION}.`);
   const profileDir = assertSafeProfileDirectory(config.profileDir);

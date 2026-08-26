@@ -20,6 +20,7 @@
     "start:web": "node dist/entrypoints/web.js",
     "local-agent": "node dist/entrypoints/local-agent.js",
     "pair-device": "node scripts/pair-device.mjs",
+    "open-connected-chrome": "node scripts/start-connected-chrome.mjs",
     "deploy:check": "pnpm install --frozen-lockfile && pnpm run build && pnpm run test",
     "dev": "tsx src/entrypoints/mcp.ts",
     "install-browser": "playwright install chromium",

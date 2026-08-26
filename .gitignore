@@ -2,6 +2,7 @@ node_modules/
 .pnpm-store/
 dist/
 .rts-profile/
+.rts-chrome-profile/
 .rts-device/
 .bot-data/
 downloads/
