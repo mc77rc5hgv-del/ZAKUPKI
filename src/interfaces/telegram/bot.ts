@@ -1,5 +1,6 @@
 import { Bot, InlineKeyboard } from "grammy";
 import { AsyncLocalStorage } from "node:async_hooks";
+import { setTimeout as delay } from "node:timers/promises";
 import { assertBotConfig, assertOwner, assertRtsAccess, botConfig, rtsAccess } from "../../config/bot.js";
 import { addFavorite, addProfile, addWatch, loadStore, recordTrackedChange, removeFavorite, removeProfile, removeWatch, setPipeline, setRole, toggleWatch, user, type PipelineStage } from "../../infrastructure/persistence/bot-store.js";
 import { devicesForOwner, loadDeviceStore, revokeDevice } from "../../infrastructure/persistence/device-store.js";
@@ -164,5 +165,14 @@ async function workplanCommand(ctx:any,url:string){if(!url)return ctx.reply("У�
 await bot.api.setMyCommands(botCommands);
 if(botConfig.miniAppUrl)await bot.api.setChatMenuButton({menu_button:{type:"web_app",text:"Открыть кабинет",web_app:{url:botConfig.miniAppUrl}}});
 setInterval(() => void monitorOnce(bot), botConfig.monitorIntervalMs).unref();
-process.once("SIGINT",async()=>{await closeMcp();bot.stop();}); process.once("SIGTERM",async()=>{await closeMcp();bot.stop();});
-console.log("KRD Market Telegram bot started"); await bot.start();
+let stopping=false;
+process.once("SIGINT",async()=>{stopping=true;await closeMcp();bot.stop();}); process.once("SIGTERM",async()=>{stopping=true;await closeMcp();bot.stop();});
+console.log("KRD Market Telegram bot started");
+while(!stopping){
+  try{await bot.start();}
+  catch(error){
+    if(stopping)break;
+    if(/409: Conflict|terminated by other getUpdates request/i.test(String(error))){console.warn("Telegram polling занят предыдущим контейнером; повтор через 5 секунд");await delay(5_000);continue;}
+    throw error;
+  }
+}
