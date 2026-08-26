@@ -28,18 +28,18 @@ queuedTool("rts_session_status", "Open the persistent RTS browser session and re
 });
 
 queuedTool("rts_open", "Navigate inside krd-market.rts-tender.ru and return a safe visible-page snapshot.", {
-  path: z.string().default("/zapros/").describe("Portal-relative path or same-origin URL"),
+  path: z.string().default("/search/sell").describe("Portal-relative path or same-origin URL"),
 }, async ({ path }) => {
   try { const p = await open(path); return text({ url: p.url(), title: await p.title(), ...(await visibleSnapshot(p)) }); } catch (e) { return fail(e); }
 });
 
 queuedTool("rts_inspect_portal", "Inventory the current authenticated RTS page: semantic capabilities, controls, forms and tables. Use this after login to discover account-specific functions.", {
-  path: z.string().default("/zapros/"), includeText: z.boolean().default(false),
+  path: z.string().default("/search/sell"), includeText: z.boolean().default(false),
 }, async ({path,includeText})=>{try{const p=await open(path);const result=await inspectPortal(p);if(!includeText)result.text="";return text(result);}catch(e){return fail(e);}});
 
 queuedTool("rts_apply_site_filters", "Fill recognized filters in the native RTS search form without submitting a bid or other legally significant action.", {
   query:z.string().optional(),number:z.string().optional(),customer:z.string().optional(),minPrice:z.number().optional(),maxPrice:z.number().optional(),status:z.string().optional(),dateFrom:z.string().optional(),dateTo:z.string().optional(),okpd2:z.string().optional(),location:z.string().optional(),submitSearch:z.boolean().default(true),
-},async ({submitSearch,...values})=>{try{const p=await open("/zapros/");const result=await applySemanticFilters(p,values);if(submitSearch){const button=p.getByRole("button",{name:/найти|поиск|применить|показать/i}).first();if(await button.count()&&await button.isEnabled()){await button.click();await p.waitForLoadState("domcontentloaded").catch(()=>{});}}return text({...result,url:p.url(),requests:await extractRequests(p,100)});}catch(e){return fail(e);}});
+},async ({submitSearch,...values})=>{try{const p=await open("/search/sell");const result=await applySemanticFilters(p,values);if(submitSearch){const button=p.getByRole("button",{name:/найти|поиск|применить|показать/i}).first();if(await button.count()&&await button.isEnabled()){await button.click();await p.waitForLoadState("domcontentloaded").catch(()=>{});}}return text({...result,url:p.url(),requests:await extractRequests(p,100)});}catch(e){return fail(e);}});
 
 queuedTool("rts_workspace", "Discover authenticated workspace sections such as applications, offers, contracts, clarifications, protocols and organization profile.", {},async()=>{try{const p=await getPage();const inventory=await inspectPortal(p);const workspace=inventory.capabilities.filter(x=>["applications","offer","contracts","clarifications","protocols","organization","auth"].includes(x.kind));return text({url:p.url(),title:inventory.title,workspace,links:inventory.controls.filter(x=>x.kind==="link"&&workspace.some(w=>w.controls.includes(x.id)))});}catch(e){return fail(e);}});
 
@@ -47,7 +47,7 @@ queuedTool("rts_list_requests", "List procurement/request links from the public 
   query: z.string().optional(), status: z.string().optional(), limit: z.number().int().min(1).max(100).default(30),
 }, async ({ query, status: wantedStatus, limit }) => {
   try {
-    const p = await open("/zapros/");
+    const p = await open("/search/sell");
     if (query) {
       const input = p.locator('input[type="search"],input[placeholder*="Поиск" i],input[name*="search" i]').first();
       if (await input.count()) { await input.fill(query); await input.press("Enter"); await p.waitForLoadState("domcontentloaded").catch(() => {}); }
@@ -70,7 +70,7 @@ queuedTool("rts_search_advanced", "Search requests and apply normalized tender f
   ...filterShape, scanLimit: z.number().int().min(1).max(500).default(200), resultLimit: z.number().int().min(1).max(100).default(30),
 }, async ({ scanLimit, resultLimit, ...filter }) => {
   try {
-    const p = await open("/zapros/");
+    const p = await open("/search/sell");
     if (filter.query) {
       const input = p.locator('input[type="search"],input[placeholder*="Поиск" i],input[name*="search" i]').first();
       if (await input.count()) { await input.fill(filter.query); await input.press("Enter"); await p.waitForLoadState("domcontentloaded").catch(() => {}); }
@@ -89,7 +89,7 @@ queuedTool("rts_deadlines", "Return upcoming request deadlines sorted by urgency
   query: z.string().optional(), days: z.number().int().min(0).max(365).default(14), limit: z.number().int().min(1).max(100).default(50),
 }, async ({ query, days, limit }) => {
   try {
-    const p = await open("/zapros/"); const raw = await extractRequestPages(p, 500);
+    const p = await open("/search/sell"); const raw = await extractRequestPages(p, 500);
     const tenders = filterTenders(raw.map(x => normalizeTender(x)), { query, minDaysLeft: 0, maxDaysLeft: days, sort: "deadline_asc" }).slice(0, limit);
     return text({ days, count: tenders.length, tenders });
   } catch (e) { return fail(e); }

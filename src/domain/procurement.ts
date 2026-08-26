@@ -16,10 +16,26 @@ export type TenderFilter = {
 
 const normalize = (s: string) => s.toLowerCase().replace(/ё/g, "е").replace(/\s+/g, " ").trim();
 const iso = (d: Date) => Number.isNaN(d.getTime()) ? undefined : d.toISOString();
-function parseRuDate(value: string): string | undefined {
+const ruMonths: Record<string, number> = {
+  январь:0, января:0, февраль:1, февраля:1, март:2, марта:2, апрель:3, апреля:3,
+  май:4, мая:4, июнь:5, июня:5, июль:6, июля:6, август:7, августа:7,
+  сентябрь:8, сентября:8, октябрь:9, октября:9, ноябрь:10, ноября:10, декабрь:11, декабря:11,
+};
+const moscowDate = (year: number, month: number, day: number, hour = 0, minute = 0) =>
+  new Date(`${String(year).padStart(4,"0")}-${String(month + 1).padStart(2,"0")}-${String(day).padStart(2,"0")}T${String(hour).padStart(2,"0")}:${String(minute).padStart(2,"0")}:00+03:00`);
+function parseRuDate(value: string, reference = new Date()): string | undefined {
   const m = value.match(/(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})(?:\s+(\d{1,2}):(\d{2}))?/);
-  if (!m) return undefined;
-  return iso(new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]), Number(m[4] ?? 0), Number(m[5] ?? 0)));
+  if (m) return iso(moscowDate(Number(m[3]), Number(m[2]) - 1, Number(m[1]), Number(m[4] ?? 0), Number(m[5] ?? 0)));
+  const named = value.toLowerCase().match(/(\d{1,2})\s+([а-яё]+)(?:\s+(\d{4}))?(?:\s*(?:г\.?|,)?\s*(\d{1,2}):(\d{2}))?/i);
+  if (!named || ruMonths[named[2]] === undefined) return undefined;
+  const explicitYear = named[3] ? Number(named[3]) : undefined;
+  let year = explicitYear ?? reference.getFullYear();
+  let date = moscowDate(year, ruMonths[named[2]], Number(named[1]), Number(named[4] ?? 0), Number(named[5] ?? 0));
+  if (!explicitYear && date.getTime() < reference.getTime() - 31 * 86_400_000) {
+    year += 1;
+    date = moscowDate(year, ruMonths[named[2]], Number(named[1]), Number(named[4] ?? 0), Number(named[5] ?? 0));
+  }
+  return iso(date);
 }
 function labelled(text: string, labels: string[]): string | undefined {
   const escaped = labels.map(x => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
@@ -34,17 +50,19 @@ function parseMoney(text: string): number | undefined {
   const value = Number(raw.replace(/[\s\u00a0]/g, "").replace(",", "."));
   return Number.isFinite(value) ? value : undefined;
 }
-function dateByLabels(text: string, labels: string[]) { const v = labelled(text, labels); return v ? parseRuDate(v) : undefined; }
+function dateByLabels(text: string, labels: string[], reference: Date) { const v = labelled(text, labels); return v ? parseRuDate(v, reference) : undefined; }
 
 export function normalizeTender(raw: RawRequest, now = new Date()): Tender {
   const text = `${raw.title}\n${raw.summary}`;
-  const deadlineAt = dateByLabels(text, ["окончание подачи", "срок подачи", "прием предложений до", "дата окончания", "окончание приема"]);
-  const publishedAt = dateByLabels(text, ["дата публикации", "опубликовано", "размещено"]);
-  const number = labelled(text, ["номер закупки", "номер запроса", "извещение", "реестровый номер"])?.match(/[A-ZА-Я0-9][A-ZА-Я0-9._\/-]{3,}/i)?.[0]
+  const deadlineAt = dateByLabels(text, ["окончание подачи", "срок подачи", "прием предложений до", "дата окончания", "окончание приема"], now)
+    ?? (() => { const value=text.match(/при[её]м предложений\s+до\s+([^\n]{2,100})/i)?.[1]; return value ? parseRuDate(value,now) : undefined; })();
+  const publishedAt = dateByLabels(text, ["дата публикации", "опубликовано", "размещено"], now);
+  const number = labelled(text, ["номер закупки", "номер запроса", "извещение", "реестровый номер", "заказ"])?.match(/[A-ZА-Я0-9][A-ZА-Я0-9._\/-]{3,}/i)?.[0]
     ?? raw.title.match(/(?:№\s*)?([A-ZА-Я0-9][A-ZА-Я0-9._\/-]{5,})/i)?.[1];
-  const customer = labelled(text, ["заказчик", "организатор", "наименование заказчика"]);
-  const location = labelled(text, ["место поставки", "регион поставки", "адрес поставки"]);
-  const status = labelled(text, ["статус", "этап"]);
+  const customer = labelled(text, ["заказчик", "покупатель", "организатор", "наименование заказчика"]);
+  const location = labelled(text, ["место поставки", "регион поставки", "регионы поставки", "адрес поставки"]);
+  const status = labelled(text, ["статус", "этап"])
+    ?? text.match(/(При[её]м предложений|Переторжка|Согласование условий|Согласование договора|Заказ завершен|Отменена|Не состоялась|Завершена без договора)/i)?.[1];
   const okpd2 = [...text.matchAll(/\b(?:ОКПД\s*2?\s*[:–-]?\s*)?(\d{2}(?:\.\d{1,3}){1,4})\b/gi)]
     .filter(x => !/^\.\d{4}/.test(text.slice((x.index ?? 0) + x[0].length)))
     .map(x => x[1]);

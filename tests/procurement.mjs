@@ -18,6 +18,18 @@ const districtTender = normalizeTender({ title:"Ремонт школы", url:"h
 assert.equal(filterTenders([districtTender], { districts:["Каневской район"] }).length, 1);
 assert.equal(filterTenders([districtTender], { districts:["Динской район"] }).length, 0);
 assert.equal(filterTenders([districtTender], { districts:["Динской район","Каневской район"] }).length, 1, "several districts use OR matching");
+const liveCard = normalizeTender({
+  title:"Поставка хозяйственных товаров",
+  url:"https://krd-market.rts-tender.ru/search/sell/10614131/request",
+  summary:"ЗАКАЗ 10614131\nП. 5 Ч. 1 СТ. 93 44-ФЗ\nРЕГИОНЫ ПОСТАВКИ: Краснодарский край\nПОКУПАТЕЛЬ: МБУ ДО СШ № 19 г. Сочи\nНЕТ ПРЕДЛОЖЕНИЙ\n39 216,56 ₽\nПрием предложений\nдо 27 августа, 23:59 МСК",
+}, now);
+assert.equal(liveCard.number, "10614131");
+assert.equal(liveCard.customer, "МБУ ДО СШ № 19 г. Сочи");
+assert.equal(liveCard.location, "Краснодарский край");
+assert.equal(liveCard.price, 39_216.56);
+assert.equal(liveCard.deadlineAt, "2026-08-27T20:59:00.000Z");
+assert.equal(liveCard.status, "Прием предложений");
+assert.equal(filterTenders([liveCard], { query:"хозяйственных", location:"Краснодарский край", status:"прием предложений", maxDaysLeft:3 }).length, 1);
 assert.ok(analyzeDeterministic(tender).completeness >= 80);
 assert.deepEqual(parseFilter("ключи=ноутбук, компьютер; исключить=ремонт; минцена=100000; максцена=2000000; дней=3-20; документы=да; сорт=срок"), {
   includeKeywords:["ноутбук","компьютер"], excludeKeywords:["ремонт"], minPrice:100000, maxPrice:2000000,

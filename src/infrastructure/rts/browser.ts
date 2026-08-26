@@ -78,11 +78,13 @@ export async function getPage(): Promise<Page> {
   }
   context.setDefaultTimeout(config.timeoutMs);
   const pages = context.pages().filter(candidate => !candidate.isClosed());
-  page = [...pages].reverse().find(candidate => { try { return new URL(candidate.url()).origin === config.baseUrl; } catch { return false; } }) ?? pages.at(-1) ?? (await context.newPage());
+  const portalPages = [...pages].reverse().filter(candidate => { try { return new URL(candidate.url()).origin === config.baseUrl; } catch { return false; } });
+  page = portalPages.find(candidate => { try { return !/\/authorization(?:\/|$)|\/login(?:\/|$)/i.test(new URL(candidate.url()).pathname); } catch { return false; } })
+    ?? portalPages[0] ?? pages.at(-1) ?? (await context.newPage());
   return page;
 }
 
-export async function open(pathname = "/zapros/"): Promise<Page> {
+export async function open(pathname = "/search/sell"): Promise<Page> {
   const p = await getPage();
   const target = portalUrl(pathname);
   if (p.url() !== target) await navigate(p,target);

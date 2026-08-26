@@ -25,10 +25,16 @@ export async function extractRequests(page: Page, limit: number): Promise<RawReq
     const seen = new Set<string>(); const out: RawRequest[] = [];
     for (const a of links as HTMLAnchorElement[]) {
       const text = (a.innerText || a.textContent || "").trim().replace(/\s+/g, " ");
-      if (!text || !/запрос|закуп|request|notice|trade|tender/i.test(a.href + " " + text)) continue;
-      if (seen.has(a.href)) continue; seen.add(a.href);
-      const card = a.closest("article,tr,.card,.request,.item,li") as HTMLElement | null;
-      out.push({ title: text.slice(0, 500), url: a.href, summary: (card?.innerText || text).trim().slice(0, 2000) });
+      let url: URL;
+      try { url = new URL(a.href); } catch { continue; }
+      if (!text || !/^\/search\/sell\/\d+\/(?:request|offers|contract)\/?$/i.test(url.pathname)) continue;
+      const canonicalPath = url.pathname.replace(/\/(?:offers|contract)\/?$/i, "/request");
+      const canonicalUrl = `${url.origin}${canonicalPath}`;
+      if (seen.has(canonicalUrl)) continue; seen.add(canonicalUrl);
+      const card = a.closest(".catalog__strip,article,tr,.card,.request,.item,li") as HTMLElement | null;
+      const titleLink = card?.querySelector('a[href*="/search/sell/"][href$="/request"]') as HTMLAnchorElement | null;
+      const title = (titleLink?.innerText || titleLink?.textContent || text).trim().replace(/\s+/g, " ");
+      out.push({ title: title.slice(0, 500), url: canonicalUrl, summary: (card?.innerText || text).trim().slice(0, 4000) });
       if (out.length >= max) break;
     }
     return out;
@@ -36,18 +42,24 @@ export async function extractRequests(page: Page, limit: number): Promise<RawReq
 }
 
 export async function extractRequestPages(page: Page, limit: number, maxPages = 20): Promise<RawRequest[]> {
-  const out = new Map<string, RawRequest>(); const visited = new Set<string>();
+  const out = new Map<string, RawRequest>(); const visitedLinks = new Set<string>(); let stagnantPasses = 0;
   for (let pageNumber = 0; pageNumber < maxPages && out.size < limit; pageNumber++) {
-    if (visited.has(page.url())) break; visited.add(page.url());
+    await page.locator('a[href*="/search/sell/"][href$="/request"]').first().waitFor({ state: "attached", timeout: 10_000 }).catch(() => {});
+    const before = out.size;
     for (const row of await extractRequests(page, limit - out.size)) out.set(row.url, row);
-    const next = page.locator('a[rel="next"],a:has-text("Следующая"),a:has-text("Далее"),button:has-text("Следующая")').filter({ visible: true }).first();
+    stagnantPasses = out.size === before ? stagnantPasses + 1 : 0;
+    if (stagnantPasses >= 2) break;
+    if (out.size >= limit) break;
+    const next = page.locator('button:has-text("Показать еще"),button:has-text("Показать ещё"),a[rel="next"],a:has-text("Следующая"),a:has-text("Далее"),button:has-text("Следующая")').filter({ visible: true }).first();
     if (!await next.count() || !await next.isEnabled()) break;
     const href = await next.getAttribute("href");
     if (href) {
       const target = new URL(href, page.url()); if (target.origin !== new URL(page.url()).origin) break;
+      if (visitedLinks.has(target.href)) break; visitedLinks.add(target.href);
       await page.goto(target.href, { waitUntil: "domcontentloaded" });
     } else {
-      await Promise.all([page.waitForLoadState("domcontentloaded").catch(() => {}), next.click()]);
+      await next.click();
+      await page.waitForTimeout(1_250);
     }
   }
   return [...out.values()].slice(0, limit);
