@@ -9,7 +9,8 @@ export type FilterProfile = { id: string; name: string; filter: TenderFilter; cr
 export type PipelineStage = "new" | "review" | "decision" | "prepare" | "submitted" | "won" | "lost" | "archived";
 export type PipelineHistoryEntry = { stage: PipelineStage; at: string };
 export type PipelineItem = { url: string; title: string; stage: PipelineStage; note?: string; assignee?: string; deadlineAt?: string; updatedAt: string; history: PipelineHistoryEntry[] };
-export type UserData = { role: "operator" | "participant"; favorites: Record<string, { title: string; url: string; addedAt: string }>; watches: Watch[]; profiles: FilterProfile[]; pipeline: Record<string, PipelineItem> };
+export type TrackedChange = { url: string; title: string; detectedAt: string; changes: Array<{ field: string; before: unknown; after: unknown; severity: "info" | "warning" | "critical" }> };
+export type UserData = { role: "operator" | "participant"; favorites: Record<string, { title: string; url: string; addedAt: string }>; watches: Watch[]; profiles: FilterProfile[]; pipeline: Record<string, PipelineItem>; trackedChanges: Record<string, TrackedChange> };
 type Database = { users: Record<string, UserData> };
 let db: Database = { users: {} };
 let loaded = false;
@@ -20,7 +21,7 @@ export async function loadStore() {
   await fs.mkdir(botConfig.dataDir, { recursive: true });
   db = await readStoreFile<Database>(file(), { users: {} });
   for (const value of Object.values(db.users)) {
-    value.profiles ??= []; value.pipeline ??= {};
+    value.profiles ??= []; value.pipeline ??= {}; value.trackedChanges ??= {};
     value.watches = (value.watches ?? []).map((w: any) => w.filter ? { enabled: true, fingerprints: {}, ...w } : ({ id: w.id, name: w.query, filter: { query: w.query, status: w.status }, enabled: true, createdAt: w.createdAt, lastUrls: w.lastUrls ?? [], fingerprints: {} }));
     for (const item of Object.values(value.pipeline)) (item as any).history ??= [{ stage: item.stage, at: item.updatedAt }];
   }
@@ -28,7 +29,7 @@ export async function loadStore() {
 }
 async function save() { await writeStoreFile(file(), db); }
 export function user(id: number): UserData {
-  return db.users[id] ??= { role: "participant", favorites: {}, watches: [], profiles: [], pipeline: {} };
+  return db.users[id] ??= { role: "participant", favorites: {}, watches: [], profiles: [], pipeline: {}, trackedChanges: {} };
 }
 export async function setRole(id: number, role: UserData["role"]) { user(id).role = role; await save(); }
 export async function addFavorite(id: number, url: string, title: string) { user(id).favorites[url] = { url, title, addedAt: new Date().toISOString() }; await save(); }
@@ -50,4 +51,6 @@ export async function setPipeline(id:number,url:string,title:string,stage:Pipeli
   user(id).pipeline[url]=item;await save();return item;
 }
 export async function removePipeline(id:number,url:string){delete user(id).pipeline[url];await save();}
+export async function recordTrackedChange(id:number,url:string,title:string,changes:TrackedChange["changes"]){user(id).trackedChanges[url]={url,title,detectedAt:new Date().toISOString(),changes};await save();}
+export async function dismissTrackedChange(id:number,url:string){delete user(id).trackedChanges[url];await save();}
 export function allUsers() { return Object.entries(db.users).map(([id, data]) => ({ id: Number(id), data })); }

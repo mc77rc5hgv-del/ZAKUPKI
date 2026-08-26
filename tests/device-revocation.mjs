@@ -71,6 +71,12 @@ try {
   assert.equal(revokeBody.data.revoked, true);
   await closeWatcher; // the hub must proactively drop an active connection on revoke
 
+  // the connection-status endpoint must distinguish "revoked" from a plain offline agent
+  const connectionAfterRevoke = await fetch(`${base}/api/connection`, { headers: ownerHeaders });
+  const { data: connectionInfo } = await connectionAfterRevoke.json();
+  assert.equal(connectionInfo.agentOnline, false);
+  assert.equal(connectionInfo.deviceRevoked, true, "the Mini App must be able to tell the agent is offline because it was revoked");
+
   const listRevoked = await fetch(`${base}/api/connection/devices`, { headers: ownerHeaders });
   const { data: devicesRevoked } = await listRevoked.json();
   const revokedEntry = devicesRevoked.find(d => d.deviceId === deviceId);

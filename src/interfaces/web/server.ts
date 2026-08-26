@@ -3,10 +3,10 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { assertOwner,assertRtsAccess,botConfig,rtsAccess } from "../../config/bot.js";
 import { call } from "../../application/mcp-client.js";
-import { addFavorite,addProfile,addWatch,loadStore,removeFavorite,removeProfile,removeWatch,setPipeline,toggleWatch,user,type PipelineStage } from "../../infrastructure/persistence/bot-store.js";
+import { addFavorite,addProfile,addWatch,dismissTrackedChange,loadStore,recordTrackedChange,removeFavorite,removeProfile,removeWatch,setPipeline,toggleWatch,user,type PipelineStage } from "../../infrastructure/persistence/bot-store.js";
 import { createPairingCode,devicesForOwner,loadDeviceStore,publicDevice,redeemPairingCode,registerDevice,revokeDevice } from "../../infrastructure/persistence/device-store.js";
 import { generateDeviceToken } from "../../infrastructure/security/pairing.js";
-import { attachAgentHub,connectedDeviceId,disconnectDevice,isOwnerConnected } from "../../infrastructure/agent-hub/server.js";
+import { attachAgentHub,connectedDeviceId,disconnectDevice,isOwnerConnected,lastDisconnectReason } from "../../infrastructure/agent-hub/server.js";
 import { validateTelegramInitData,type TelegramWebUser } from "./telegram-auth.js";
 
 type RequestContext={user:TelegramWebUser;body:Record<string,any>};
@@ -23,7 +23,7 @@ function authenticate(req:IncomingMessage){
   if(!botConfig.allowedUsers.has(auth.user.id))throw new Error("Пользователь не входит в список доступа");return auth.user;
 }
 const routes=new Map<string,(ctx:RequestContext)=>Promise<unknown>>([
-  ["GET /api/connection",async ctx=>{const access=rtsAccess(ctx.user.id);return {telegramVerified:true,accountOwner:access.isOwner,ownerConfigured:access.ownerConfigured,mode:botConfig.rtsTransport==="hub"?"agent":botConfig.rtsHeadless?"cloud":"local",cloudBlocked:access.cloudBlocked,agentOnline:access.isOwner?isOwnerConnected(ctx.user.id):undefined,acceptsCredentials:false};}],
+  ["GET /api/connection",async ctx=>{const access=rtsAccess(ctx.user.id);const online=access.isOwner?isOwnerConnected(ctx.user.id):undefined;return {telegramVerified:true,accountOwner:access.isOwner,ownerConfigured:access.ownerConfigured,mode:botConfig.rtsTransport==="hub"?"agent":botConfig.rtsHeadless?"cloud":"local",cloudBlocked:access.cloudBlocked,agentOnline:online,deviceRevoked:access.isOwner&&!online?lastDisconnectReason(ctx.user.id)==="DEVICE_REVOKED":false,acceptsCredentials:false};}],
   ["POST /api/connection/open",async ctx=>{assertRtsAccess(ctx.user.id);const session=await call<any>("rts_session_status");return {opened:true,connected:Boolean(session.likelyLoggedIn&&!session.antiDdos),antiDdos:Boolean(session.antiDdos),headed:Boolean(session.headed)};}],
   ["POST /api/connection/check",async ctx=>{assertRtsAccess(ctx.user.id);const session=await call<any>("rts_session_status");return {connected:Boolean(session.likelyLoggedIn&&!session.antiDdos),antiDdos:Boolean(session.antiDdos),headed:Boolean(session.headed)};}],
   ["POST /api/connection/disconnect",async ctx=>{assertOwner(ctx.user.id);await call("rts_close");return {disconnected:true};}],
@@ -41,7 +41,8 @@ const routes=new Map<string,(ctx:RequestContext)=>Promise<unknown>>([
   ["POST /api/readiness",ctx=>platform(ctx,"rts_assess_readiness")],
   ["POST /api/economics",ctx=>call("rts_bid_economics",ctx.body)],
   ["POST /api/workplan",ctx=>platform(ctx,"rts_build_workplan")],
-  ["POST /api/track",ctx=>platform(ctx,"rts_track_request")],
+  ["POST /api/track",async ctx=>{assertRtsAccess(ctx.user.id);const data=await call<any>("rts_track_request",ctx.body);const comparison=data?.tracking?.comparison;if(comparison?.changed)await recordTrackedChange(ctx.user.id,String(ctx.body.url??""),data.dossier?.title??String(ctx.body.url??""),comparison.changes??[]);return data;}],
+  ["POST /api/tracked-changes/dismiss",async ctx=>{await dismissTrackedChange(ctx.user.id,String(ctx.body.url??""));return user(ctx.user.id).trackedChanges;}],
   ["POST /api/compare",ctx=>platform(ctx,"rts_compare_requests")],
   ["POST /api/draft",ctx=>platform(ctx,"rts_prepare_offer_draft",{...ctx.body,execute:false,confirm:false})],
   ["POST /api/tables",ctx=>platform(ctx,"rts_extract_tables")],

@@ -14,6 +14,8 @@ type Pending = { resolve: (value: unknown) => void; reject: (error: Error) => vo
 type Connection = { ws: WebSocket; deviceId: string; ownerTelegramId: number; lastSeenAt: number; pending: Map<string, Pending> };
 
 const connections = new Map<number, Connection>(); // ownerTelegramId -> single active agent connection
+const lastDisconnect = new Map<number, { code: string; at: number }>();
+const LAST_DISCONNECT_TTL_MS = 5 * 60_000; // stale reasons stop being shown once this old
 
 function log(event: string, fields: Record<string, unknown> = {}) {
   console.log(JSON.stringify({ event, ...fields, ts: new Date().toISOString() }));
@@ -26,12 +28,30 @@ function rejectAllPending(connection: Connection, code: string) {
   connection.pending.clear();
 }
 function dropConnection(connection: Connection, code: string) {
-  if (connections.get(connection.ownerTelegramId) === connection) connections.delete(connection.ownerTelegramId);
+  // A connection we close explicitly (revoke, superseded) still fires its own
+  // "close" event afterwards with a generic reason; only the first drop for a
+  // given connection should decide the recorded reason, so later ones (this
+  // connection is no longer the active one) must not clobber it.
+  const stillActive = connections.get(connection.ownerTelegramId) === connection;
+  if (!stillActive) { rejectAllPending(connection, code); return; }
+  connections.delete(connection.ownerTelegramId);
+  lastDisconnect.set(connection.ownerTelegramId, { code, at: Date.now() });
   rejectAllPending(connection, code);
 }
 
 export function isOwnerConnected(ownerTelegramId: number): boolean {
   return connections.has(ownerTelegramId);
+}
+
+/** Why the owner's agent most recently dropped, for a short window — lets the
+ * Mini App show "this device was revoked" instead of a generic "offline" when
+ * that is in fact why nothing is connected right now. Stale entries (past the
+ * TTL, or superseded by a later successful reconnect) are not returned. */
+export function lastDisconnectReason(ownerTelegramId: number): string | undefined {
+  if (connections.has(ownerTelegramId)) return undefined;
+  const entry = lastDisconnect.get(ownerTelegramId);
+  if (!entry || Date.now() - entry.at > LAST_DISCONNECT_TTL_MS) return undefined;
+  return entry.code;
 }
 
 export function connectedDeviceId(ownerTelegramId: number): string | undefined {
@@ -98,6 +118,7 @@ async function handleHello(ws: WebSocket, raw: RawData) {
 
   const connection: Connection = { ws, deviceId: device.deviceId, ownerTelegramId: device.ownerTelegramId, lastSeenAt: Date.now(), pending: new Map() };
   connections.set(device.ownerTelegramId, connection);
+  lastDisconnect.delete(device.ownerTelegramId);
   await touchDevice(device.deviceId);
   send(ws, { type: "hello_ok", ownerTelegramId: device.ownerTelegramId });
   log("agent_connected", { deviceId: device.deviceId, ownerTelegramId: device.ownerTelegramId, agentVersion: device.agentVersion });

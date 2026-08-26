@@ -11,7 +11,7 @@
     "build": "tsc -p tsconfig.json",
     "build:railway": "playwright install chromium && tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
-    "test": "node tests/smoke.mjs && node tests/procurement.mjs && node tests/capabilities.mjs && node tests/dossier.mjs && node tests/participation.mjs && node tests/telegram-auth.mjs && node tests/rts-access.mjs && node tests/rpc-replay.mjs && node tests/connection-api.mjs && node tests/device-pairing.mjs && node tests/device-revocation.mjs && node tests/rpc-auth.mjs && node tests/user-isolation.mjs && node tests/storage-encryption.mjs && node tests/storage-migration.mjs && node tests/operation-queue.mjs && node tests/pipeline.mjs",
+    "test": "node tests/smoke.mjs && node tests/procurement.mjs && node tests/capabilities.mjs && node tests/dossier.mjs && node tests/participation.mjs && node tests/telegram-auth.mjs && node tests/rts-access.mjs && node tests/rpc-replay.mjs && node tests/connection-api.mjs && node tests/device-pairing.mjs && node tests/device-revocation.mjs && node tests/rpc-auth.mjs && node tests/user-isolation.mjs && node tests/storage-encryption.mjs && node tests/storage-migration.mjs && node tests/operation-queue.mjs && node tests/pipeline.mjs && node tests/tracked-changes-store.mjs && node tests/tracked-changes-api.mjs",
     "bot": "node dist/entrypoints/telegram.js",
     "start": "node dist/entrypoints/mcp.js",
     "start:mcp": "node dist/entrypoints/mcp.js",
