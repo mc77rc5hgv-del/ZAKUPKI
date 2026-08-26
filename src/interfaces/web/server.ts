@@ -57,12 +57,12 @@ function sanitizeSearchRows(input:unknown){
   if(!Array.isArray(input))return [] as Record<string,unknown>[];
   return input.slice(0,2000).map(row=>{
     const r=row&&typeof row==="object"?row as Record<string,unknown>:{};
-    return {title:str(r.title,300),url:str(r.url,500),customer:str(r.customer,200),price:num(r.price),okpd2:Array.isArray(r.okpd2)?r.okpd2.filter(x=>typeof x==="string").slice(0,20).join(", "):"",location:str(r.location,200),deadlineAt:str(r.deadlineAt,40),daysLeft:num(r.daysLeft),status:str(r.status,100)};
+    return {title:str(r.title,300),url:str(r.url,500),customer:str(r.customer,200),price:num(r.price),okpd2:Array.isArray(r.okpd2)?r.okpd2.filter(x=>typeof x==="string").slice(0,20).join(", "):"",location:str(r.location,200),deadlineAt:str(r.deadlineAt,40),daysLeft:num(r.daysLeft),status:str(r.status,100),publishedAt:str(r.publishedAt,40),hasDocuments:r.hasDocuments===true};
   });
 }
 const STAGE_LABELS:Record<string,string>={new:"Новая",review:"На рассмотрении",decision:"Решение",prepare:"Подготовка",submitted:"Подана",won:"Выигран",lost:"Проигран",archived:"В архиве"};
 const EXPORT_COLUMNS:Record<string,CsvColumn<any>[]>={
-  search:[{header:"Название",value:r=>r.title},{header:"Ссылка",value:r=>r.url},{header:"Заказчик",value:r=>r.customer},{header:"Цена",value:r=>r.price??""},{header:"ОКПД2",value:r=>r.okpd2},{header:"Регион",value:r=>r.location},{header:"Срок подачи",value:r=>r.deadlineAt},{header:"Осталось дней",value:r=>r.daysLeft??""},{header:"Статус",value:r=>r.status}],
+  search:[{header:"Название",value:r=>r.title},{header:"Ссылка",value:r=>r.url},{header:"Заказчик",value:r=>r.customer},{header:"Цена",value:r=>r.price??""},{header:"ОКПД2",value:r=>r.okpd2},{header:"Регион",value:r=>r.location},{header:"Опубликовано",value:r=>r.publishedAt},{header:"Срок подачи",value:r=>r.deadlineAt},{header:"Осталось дней",value:r=>r.daysLeft??""},{header:"Статус",value:r=>r.status},{header:"Документы",value:r=>r.hasDocuments?"есть":"нет"}],
   pipeline:[{header:"Название",value:r=>r.title},{header:"Ссылка",value:r=>r.url},{header:"Этап",value:r=>STAGE_LABELS[r.stage]??r.stage},{header:"Заметка",value:r=>r.note??""},{header:"Ответственный",value:r=>r.assignee??""},{header:"Срок",value:r=>r.deadlineAt??""},{header:"Обновлено",value:r=>r.updatedAt}],
   favorites:[{header:"Название",value:r=>r.title},{header:"Ссылка",value:r=>r.url},{header:"Добавлено",value:r=>r.addedAt}],
   "tracked-changes":[{header:"Название",value:r=>r.title},{header:"Ссылка",value:r=>r.url},{header:"Обнаружено",value:r=>r.detectedAt},{header:"Изменения",value:r=>(r.changes??[]).map((c:any)=>`${c.field}: ${JSON.stringify(c.before)} → ${JSON.stringify(c.after)}`).join("; ")}],

@@ -33,7 +33,7 @@ try {
   //    allowlist of fields must survive — including a formula-injection attempt
   //    and a field that isn't in the allowlist at all.
   const searchRows = [
-    { title: "Поставка мебели", url: "https://krd-market.rts-tender.ru/zapros/1", price: 125000, okpd2: ["31.01.11"], customer: "=cmd|calc", secret: "must not appear in the CSV" },
+    { title: "Поставка мебели", url: "https://krd-market.rts-tender.ru/zapros/1", price: 125000, okpd2: ["31.01.11"], customer: "=cmd|calc", publishedAt: "2026-08-01T00:00:00.000Z", hasDocuments: true, secret: "must not appear in the CSV" },
   ];
   const exportRes = await fetch(`${base}/api/export`, { method: "POST", headers: headers(42), body: JSON.stringify({ kind: "search", rows: searchRows }) });
   assert.equal(exportRes.status, 200);
@@ -48,6 +48,8 @@ try {
   assert.ok(csv.includes("Поставка мебели"));
   assert.ok(csv.includes("'=cmd|calc"), "formula-injection guard must survive the full round trip");
   assert.ok(!csv.includes("must not appear"), "fields outside the export allowlist must never reach the CSV");
+  assert.ok(csv.includes("2026-08-01T00:00:00.000Z"), "publishedAt must be included in the search export");
+  assert.ok(csv.includes("есть"), "hasDocuments must render as a readable yes/no column");
 
   // download token is single-use
   const second = await fetch(`${base}/api/export/download?token=${exported.token}`);
