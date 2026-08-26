@@ -4,7 +4,7 @@ import { assertBotConfig, assertOwner, assertRtsAccess, botConfig, rtsAccess } f
 import { addFavorite, addProfile, addWatch, loadStore, recordTrackedChange, removeFavorite, removeProfile, removeWatch, setPipeline, setRole, toggleWatch, user, type PipelineStage } from "../../infrastructure/persistence/bot-store.js";
 import { devicesForOwner, loadDeviceStore, revokeDevice } from "../../infrastructure/persistence/device-store.js";
 import { connectedDeviceId, disconnectDevice, isOwnerConnected } from "../../infrastructure/agent-hub/server.js";
-import { call as rawCall, closeMcp } from "../../application/mcp-client.js";
+import { callForUser, closeMcp } from "../../application/mcp-client.js";
 import { analyzeTender } from "../../infrastructure/ai/tender-analysis.js";
 import { clip, esc, requestList, tenderList } from "./format.js";
 import { monitorOnce } from "./monitor.js";
@@ -25,7 +25,7 @@ const pending = new Map<number, "search" | "watch" | "card" | "analyze" | "filte
 const favoriteTokens = new Map<string, string>();
 const favoriteKey = (url: string) => Buffer.from(url).toString("base64url").slice(-24);
 const actor = new AsyncLocalStorage<number>();
-const call = async <T=unknown>(name:string,args:Record<string,unknown>={})=>{const id=actor.getStore();if(!id)throw new Error("Контекст пользователя отсутствует");assertRtsAccess(id);return rawCall<T>(name,args);};
+const call = async <T=unknown>(name:string,args:Record<string,unknown>={})=>{const id=actor.getStore();if(!id)throw new Error("Контекст пользователя отсутствует");assertRtsAccess(id);return callForUser<T>(id,name,args);};
 
 bot.use(async (ctx, next) => {
   const id = ctx.from?.id;
@@ -156,7 +156,7 @@ async function showDevices(ctx:any){
     await ctx.reply(`<b>${esc(d.displayName)}</b>\n${status}\nПоследняя активность: ${esc(d.lastSeenAt??"—")}`,{parse_mode:"HTML",reply_markup:d.revokedAt?undefined:new InlineKeyboard().text("Отозвать",`device:revoke:${d.deviceId}`)});
   }
 }
-async function disconnectCommand(ctx:any){try{assertOwner(ctx.from.id);await rawCall("rts_close");await ctx.reply("Браузер закрыт. Профиль сохранён на устройстве.");}catch(e){await ctx.reply(`Ошибка: ${describeError(e)}`);}}
+async function disconnectCommand(ctx:any){try{assertOwner(ctx.from.id);await callForUser(ctx.from.id,"rts_close");await ctx.reply("Браузер закрыт. Профиль сохранён на устройстве.");}catch(e){await ctx.reply(`Ошибка: ${describeError(e)}`);}}
 async function workplanCommand(ctx:any,url:string){if(!url)return ctx.reply("Укажите URL: /workplan https://...");const wait=await ctx.reply("Формирую план подготовки…");try{const data=await call<any>("rts_build_workplan",{url});const w=data.workplan;await ctx.api.editMessageText(ctx.chat.id,wait.message_id,clip(`Дедлайн: ${w.deadlineAt??"не распознан"}\n\n${w.tasks.map((x:any)=>`${x.status==="overdue"?"🔴":"⬜"} ${x.title}\n${x.owner} · ${x.dueAt??"срок назначить вручную"}`).join("\n\n")}\n\n${w.warnings.join("; ")}`));}catch(e){await ctx.api.editMessageText(ctx.chat.id,wait.message_id,`Ошибка: ${describeError(e)}`);}}
 
 await bot.api.setMyCommands(botCommands);

@@ -8,6 +8,9 @@ const numericId = (value: string | undefined) => {
 };
 const allowedUsers = ids(process.env.TELEGRAM_ALLOWED_USERS);
 const configuredOwner = numericId(process.env.RTS_ACCOUNT_OWNER_ID);
+const configuredOwners = ids(process.env.RTS_ACCOUNT_OWNER_IDS ?? "");
+if (configuredOwner !== undefined) configuredOwners.add(configuredOwner);
+if (!configuredOwners.size && allowedUsers.size === 1) configuredOwners.add([...allowedUsers][0]);
 
 export const botConfig = {
   token: process.env.TELEGRAM_BOT_TOKEN ?? "",
@@ -22,7 +25,10 @@ export const botConfig = {
   webPort: Number(process.env.PORT ?? process.env.MINIAPP_PORT ?? 3000),
   miniAppDevBypass: bool(process.env.MINIAPP_DEV_BYPASS),
   telegramAuthMaxAgeSeconds: Number(process.env.TELEGRAM_AUTH_MAX_AGE_SECONDS ?? 86_400),
-  rtsAccountOwnerId: configuredOwner ?? (allowedUsers.size === 1 ? [...allowedUsers][0] : undefined),
+  rtsAccountOwnerIds: configuredOwners,
+  // Backward-compatible default for scheduled/internal calls that have no user
+  // context. Interactive bot and Mini App calls are always routed by caller ID.
+  rtsAccountOwnerId: configuredOwner ?? [...configuredOwners][0],
   rtsHeadless: bool(process.env.RTS_HEADLESS),
   allowCloudAccountSession: bool(process.env.RTS_ALLOW_CLOUD_ACCOUNT_SESSION),
   rtsTransport: (process.env.RTS_TRANSPORT === "hub" ? "hub" : "local") as "local" | "hub",
@@ -30,9 +36,9 @@ export const botConfig = {
 };
 
 export function rtsAccess(userId: number) {
-  const isOwner = botConfig.rtsAccountOwnerId === userId;
+  const isOwner = botConfig.rtsAccountOwnerIds.has(userId);
   const cloudBlocked = botConfig.rtsHeadless && !botConfig.allowCloudAccountSession && botConfig.rtsTransport !== "hub";
-  return { isOwner, ownerConfigured: botConfig.rtsAccountOwnerId !== undefined, cloudBlocked };
+  return { isOwner, ownerConfigured: botConfig.rtsAccountOwnerIds.size > 0, cloudBlocked };
 }
 
 /** Requires the caller to be the configured RTS account owner. Does not gate on

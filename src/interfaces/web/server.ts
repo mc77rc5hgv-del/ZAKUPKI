@@ -2,7 +2,7 @@ import http,{type IncomingMessage,type ServerResponse} from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { assertOwner,assertRtsAccess,botConfig,rtsAccess } from "../../config/bot.js";
-import { call } from "../../application/mcp-client.js";
+import { callForUser } from "../../application/mcp-client.js";
 import { addFavorite,addProfile,addWatch,dismissTrackedChange,loadStore,recordTrackedChange,removeFavorite,removeProfile,removeWatch,setPipeline,toggleWatch,user,type PipelineStage } from "../../infrastructure/persistence/bot-store.js";
 import { createPairingCode,devicesForOwner,loadDeviceStore,publicDevice,redeemPairingCode,registerDevice,revokeDevice } from "../../infrastructure/persistence/device-store.js";
 import { generateDeviceToken } from "../../infrastructure/security/pairing.js";
@@ -24,10 +24,10 @@ function authenticate(req:IncomingMessage){
 }
 const routes=new Map<string,(ctx:RequestContext)=>Promise<unknown>>([
   ["GET /api/connection",async ctx=>{const access=rtsAccess(ctx.user.id);const online=access.isOwner?isOwnerConnected(ctx.user.id):undefined;return {telegramVerified:true,accountOwner:access.isOwner,ownerConfigured:access.ownerConfigured,mode:botConfig.rtsTransport==="hub"?"agent":botConfig.rtsHeadless?"cloud":"local",cloudBlocked:access.cloudBlocked,agentOnline:online,deviceRevoked:access.isOwner&&!online?lastDisconnectReason(ctx.user.id)==="DEVICE_REVOKED":false,acceptsCredentials:false};}],
-  ["POST /api/connection/open",async ctx=>{assertRtsAccess(ctx.user.id);const session=await call<any>("rts_session_status");return {opened:true,connected:Boolean(session.likelyLoggedIn&&!session.antiDdos),antiDdos:Boolean(session.antiDdos),headed:Boolean(session.headed)};}],
-  ["POST /api/connection/check",async ctx=>{assertRtsAccess(ctx.user.id);const session=await call<any>("rts_session_status");return {connected:Boolean(session.likelyLoggedIn&&!session.antiDdos),antiDdos:Boolean(session.antiDdos),headed:Boolean(session.headed)};}],
-  ["POST /api/connection/disconnect",async ctx=>{assertOwner(ctx.user.id);await call("rts_close");return {disconnected:true};}],
-  ["POST /api/connection/forget",async ctx=>{assertOwner(ctx.user.id);if(ctx.body.confirm!==true)throw new Error("Требуется явное подтверждение удаления профиля");await call("rts_forget_profile",{confirm:"DELETE_RTS_PROFILE"});return {forgotten:true};}],
+  ["POST /api/connection/open",async ctx=>{assertRtsAccess(ctx.user.id);const session=await callForUser<any>(ctx.user.id,"rts_session_status");return {opened:true,connected:Boolean(session.likelyLoggedIn&&!session.antiDdos),antiDdos:Boolean(session.antiDdos),headed:Boolean(session.headed)};}],
+  ["POST /api/connection/check",async ctx=>{assertRtsAccess(ctx.user.id);const session=await callForUser<any>(ctx.user.id,"rts_session_status");return {connected:Boolean(session.likelyLoggedIn&&!session.antiDdos),antiDdos:Boolean(session.antiDdos),headed:Boolean(session.headed)};}],
+  ["POST /api/connection/disconnect",async ctx=>{assertOwner(ctx.user.id);await callForUser(ctx.user.id,"rts_close");return {disconnected:true};}],
+  ["POST /api/connection/forget",async ctx=>{assertOwner(ctx.user.id);if(ctx.body.confirm!==true)throw new Error("Требуется явное подтверждение удаления профиля");await callForUser(ctx.user.id,"rts_forget_profile",{confirm:"DELETE_RTS_PROFILE"});return {forgotten:true};}],
   ["POST /api/connection/devices/pair/start",async ctx=>{assertOwner(ctx.user.id);return createPairingCode(ctx.user.id);}],
   ["GET /api/connection/devices",async ctx=>{assertOwner(ctx.user.id);const activeDeviceId=connectedDeviceId(ctx.user.id);return devicesForOwner(ctx.user.id).map(d=>({...publicDevice(d),online:d.deviceId===activeDeviceId}));}],
   ["POST /api/connection/devices/revoke",async ctx=>{assertOwner(ctx.user.id);const deviceId=String(ctx.body.deviceId??"");const device=await revokeDevice(ctx.user.id,deviceId);if(!device)throw new Error("Устройство не найдено");disconnectDevice(deviceId);return {revoked:true};}],
@@ -39,9 +39,9 @@ const routes=new Map<string,(ctx:RequestContext)=>Promise<unknown>>([
   ["POST /api/request",ctx=>platform(ctx,"rts_get_request")],
   ["POST /api/dossier",ctx=>platform(ctx,"rts_build_dossier")],
   ["POST /api/readiness",ctx=>platform(ctx,"rts_assess_readiness")],
-  ["POST /api/economics",ctx=>call("rts_bid_economics",ctx.body)],
+  ["POST /api/economics",ctx=>platform(ctx,"rts_bid_economics")],
   ["POST /api/workplan",ctx=>platform(ctx,"rts_build_workplan")],
-  ["POST /api/track",async ctx=>{assertRtsAccess(ctx.user.id);const data=await call<any>("rts_track_request",ctx.body);const comparison=data?.tracking?.comparison;if(comparison?.changed)await recordTrackedChange(ctx.user.id,String(ctx.body.url??""),data.dossier?.title??String(ctx.body.url??""),comparison.changes??[]);return data;}],
+  ["POST /api/track",async ctx=>{assertRtsAccess(ctx.user.id);const data=await callForUser<any>(ctx.user.id,"rts_track_request",ctx.body);const comparison=data?.tracking?.comparison;if(comparison?.changed)await recordTrackedChange(ctx.user.id,String(ctx.body.url??""),data.dossier?.title??String(ctx.body.url??""),comparison.changes??[]);return data;}],
   ["POST /api/tracked-changes/dismiss",async ctx=>{await dismissTrackedChange(ctx.user.id,String(ctx.body.url??""));return user(ctx.user.id).trackedChanges;}],
   ["POST /api/compare",ctx=>platform(ctx,"rts_compare_requests")],
   ["POST /api/draft",ctx=>platform(ctx,"rts_prepare_offer_draft",{...ctx.body,execute:false,confirm:false})],
@@ -58,7 +58,7 @@ const routes=new Map<string,(ctx:RequestContext)=>Promise<unknown>>([
   ["POST /api/watch",async ctx=>ctx.body.action==="remove"?(await removeWatch(ctx.user.id,ctx.body.id),user(ctx.user.id).watches):ctx.body.action==="toggle"?toggleWatch(ctx.user.id,ctx.body.id):addWatch(ctx.user.id,ctx.body.name,ctx.body.filter)],
 ]);
 
-async function platform(ctx:RequestContext,tool:string,args:Record<string,unknown>=ctx.body){assertRtsAccess(ctx.user.id);return call(tool,args);}
+async function platform(ctx:RequestContext,tool:string,args:Record<string,unknown>=ctx.body){assertRtsAccess(ctx.user.id);return callForUser(ctx.user.id,tool,args);}
 
 // Pairing a new local agent proves ownership by possessing the one-time code
 // shown in the Mini App, not by Telegram initData — the agent process is not a

@@ -6,8 +6,9 @@ import path from "node:path";
 
 const BOT_TOKEN = "42:user-isolation-test-token";
 process.env.TELEGRAM_BOT_TOKEN = BOT_TOKEN;
-process.env.TELEGRAM_ALLOWED_USERS = "42,7";
+process.env.TELEGRAM_ALLOWED_USERS = "42,7,99";
 process.env.RTS_ACCOUNT_OWNER_ID = "42";
+process.env.RTS_ACCOUNT_OWNER_IDS = "42,7";
 process.env.BOT_DATA_DIR = mkdtempSync(path.join(tmpdir(), "zakupki-user-isolation-"));
 process.env.MINIAPP_PORT = "0";
 process.env.MINIAPP_DEV_BYPASS = "false";
@@ -28,9 +29,10 @@ const port = server.address().port;
 const base = `http://127.0.0.1:${port}`;
 const ownerHeaders = { "x-telegram-init-data": initDataFor(42) };
 const strangerHeaders = { "x-telegram-init-data": initDataFor(7) };
+const nonOwnerHeaders = { "x-telegram-init-data": initDataFor(99) };
 
 try {
-  // the non-owner is an allowlisted Telegram user, but not the RTS account owner
+  // A regular allowlisted bot user is not allowed to use or pair an RTS bridge.
   for (const [method, url, body] of [
     ["GET", "/api/connection/devices", undefined],
     ["POST", "/api/connection/devices/pair/start", undefined],
@@ -38,7 +40,7 @@ try {
     ["POST", "/api/connection/disconnect", undefined],
   ]) {
     const res = await fetch(`${base}${url}`, {
-      method, headers: { ...strangerHeaders, "content-type": "application/json" },
+      method, headers: { ...nonOwnerHeaders, "content-type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     assert.equal(res.status, 401, `${method} ${url} must be rejected for a non-owner user`);
@@ -47,9 +49,11 @@ try {
     assert.match(json.error, /принадлежит другому|владелец/i, `${method} ${url} must clearly signal an ownership rejection`);
   }
 
-  // the configured owner passes the ownership gate
-  const pairStart = await fetch(`${base}/api/connection/devices/pair/start`, { method: "POST", headers: ownerHeaders });
-  assert.equal(pairStart.status, 200);
+  // Both configured owners pass the gate and receive separate pairing codes.
+  const ownerPairStart = await fetch(`${base}/api/connection/devices/pair/start`, { method: "POST", headers: ownerHeaders });
+  const secondPairStart = await fetch(`${base}/api/connection/devices/pair/start`, { method: "POST", headers: strangerHeaders });
+  assert.equal(ownerPairStart.status, 200);
+  assert.equal(secondPairStart.status, 200);
 
   // ...and only fails later, for an unrelated, non-sensitive reason (no local agent connected)
   const search = await fetch(`${base}/api/search`, {
@@ -60,6 +64,11 @@ try {
   assert.equal(searchBody.ok, false);
   assert.ok(!/принадлежит|владелец/i.test(searchBody.error), "owner failure must not be reported as an ownership error");
   assert.ok(!/AGENT_OFFLINE|stack|profileDir/i.test(searchBody.error), "internal failure codes and paths must not leak to the client");
+
+  const secondSearch = await fetch(`${base}/api/search`, {
+    method: "POST", headers: { ...strangerHeaders, "content-type": "application/json" }, body: JSON.stringify({}),
+  });
+  assert.equal(secondSearch.status, 400, "second owner must be routed past ownership checks to their own offline agent");
 
   console.log("user isolation: ok");
 } finally {

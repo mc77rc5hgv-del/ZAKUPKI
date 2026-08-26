@@ -47,4 +47,13 @@ export async function call<T = unknown>(name: string, args: Record<string, unkno
   }
   return callLocal<T>(name, args);
 }
+
+/** Route an interactive request to the local agent owned by this Telegram user.
+ * This is the isolation boundary for multi-account Railway deployments. */
+export async function callForUser<T = unknown>(userId: number, name: string, args: Record<string, unknown> = {}): Promise<T> {
+  if (!botConfig.rtsAccountOwnerIds.has(userId)) throw new Error("Сессия РТС для пользователя не настроена");
+  if (botConfig.rtsTransport === "hub") return sendRpc<T>(userId, name, args);
+  if (botConfig.rtsAccountOwnerId !== userId) throw new Error("Локальный режим поддерживает только основной профиль РТС");
+  return callLocal<T>(name, args);
+}
 export async function closeMcp() { await client?.close(); client = undefined; }
