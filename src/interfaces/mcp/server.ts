@@ -61,7 +61,7 @@ queuedTool("rts_list_requests", "List procurement/request links from the public 
 const filterShape = {
   query: z.string().optional(), includeKeywords: z.array(z.string()).optional(), excludeKeywords: z.array(z.string()).optional(),
   minPrice: z.number().nonnegative().optional(), maxPrice: z.number().nonnegative().optional(), customer: z.string().optional(),
-  location: z.string().optional(), status: z.string().optional(), okpd2: z.array(z.string()).optional(),
+  location: z.string().optional(), districts: z.array(z.string()).max(100).optional(), status: z.string().optional(), okpd2: z.array(z.string()).optional(),
   deadlineFrom: z.string().optional(), deadlineTo: z.string().optional(), minDaysLeft: z.number().int().optional(), maxDaysLeft: z.number().int().optional(),
   requireDocuments: z.boolean().optional(), sort: z.enum(["relevance", "price_asc", "price_desc", "deadline_asc", "published_desc"]).optional(),
 };

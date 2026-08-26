@@ -42,6 +42,7 @@ bot.command("search", async ctx => runSearch(ctx, ctx.match.trim()));
 bot.command("card", async ctx => runCard(ctx, ctx.match.trim(), false));
 bot.command("analyze", async ctx => runCard(ctx, ctx.match.trim(), true));
 bot.command("watch", async ctx => { const q=ctx.match.trim(); if (!q) return void await ctx.reply("Укажите запрос: /watch канцелярские товары"); const w=await addWatch(ctx.from!.id,q); await ctx.reply(`Мониторинг «${q}» создан: ${w.id.slice(0,8)}`); });
+bot.command("watcharea", async ctx => { const districts=ctx.match.split(/[,|]/).map(x=>x.trim()).filter(Boolean); if(!districts.length)return void await ctx.reply("Укажите район: /watcharea Каневской район\nНесколько: /watcharea Каневской район, Динской район"); const name=`Районы: ${districts.join(", ")}`; const w=await addWatch(ctx.from!.id,name,{districts}); await ctx.reply(`🔔 Территориальный мониторинг создан.\n${describeFilter(w.filter)}\n\nПервый запуск запомнит текущие закупки; уведомления придут только о новых.`); });
 bot.command("favorites", showFavorites);
 bot.command("filter", async ctx => saveFilterCommand(ctx,ctx.match.trim()));
 bot.command("filters", showFilters);

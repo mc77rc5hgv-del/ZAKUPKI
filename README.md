@@ -116,6 +116,7 @@ pnpm run bot
 ```text
 /filters                       — открыть и запустить профили
 /watchfilter <ID>              — включить мониторинг по профилю
+/watcharea Каневской район     — уведомления о новых закупках в районе
 /digest                        — получить сводку по всем профилям
 /deadlines 14                  — сроки на ближайшие 14 дней
 ```
@@ -131,7 +132,7 @@ pnpm run bot
 
 Мониторинг сохраняет отпечаток каждой закупки и уведомляет отдельно о новых результатах и об изменениях уже известных карточек.
 
-Полный перечень команд: `/search`, `/filter`, `/filters`, `/deadlines`, `/digest`, `/card`, `/analyze`, `/watch`, `/watchfilter`, `/queue`, `/stage`, `/favorites`, `/session`, `/role`, `/help`.
+Полный перечень команд: `/search`, `/filter`, `/filters`, `/deadlines`, `/digest`, `/card`, `/analyze`, `/watch`, `/watcharea`, `/watchfilter`, `/queue`, `/stage`, `/favorites`, `/session`, `/role`, `/help`.
 
 ## Telegram Mini App
 

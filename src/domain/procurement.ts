@@ -8,7 +8,7 @@ export type Tender = RawRequest & {
 
 export type TenderFilter = {
   query?: string; includeKeywords?: string[]; excludeKeywords?: string[];
-  minPrice?: number; maxPrice?: number; customer?: string; location?: string;
+  minPrice?: number; maxPrice?: number; customer?: string; location?: string; districts?: string[];
   status?: string; okpd2?: string[]; deadlineFrom?: string; deadlineTo?: string;
   minDaysLeft?: number; maxDaysLeft?: number; requireDocuments?: boolean;
   sort?: "relevance" | "price_asc" | "price_desc" | "deadline_asc" | "published_desc";
@@ -68,7 +68,10 @@ export function filterTenders(rows: Tender[], filter: TenderFilter): Tender[] {
     if (filter.minPrice !== undefined && (row.price === undefined || row.price < filter.minPrice)) return [];
     if (filter.maxPrice !== undefined && (row.price === undefined || row.price > filter.maxPrice)) return [];
     if (filter.customer && !hay.includes(normalize(filter.customer))) return [];
-    if (filter.location && !normalize(row.location ?? row.summary).includes(normalize(filter.location))) return [];
+    const territory = normalize(`${row.location ?? ""} ${row.summary} ${row.title}`);
+    if (filter.location && !territory.includes(normalize(filter.location))) return [];
+    const districts = (filter.districts ?? []).map(normalize).filter(Boolean);
+    if (districts.length && !districts.some(district => territory.includes(district))) return [];
     if (filter.status && !normalize(row.status ?? row.summary).includes(normalize(filter.status))) return [];
     if (filter.okpd2?.length && !filter.okpd2.some(code => row.okpd2.some(x => x.startsWith(code)))) return [];
     if (filter.deadlineFrom && (!row.deadlineAt || row.deadlineAt < new Date(filter.deadlineFrom).toISOString())) return [];

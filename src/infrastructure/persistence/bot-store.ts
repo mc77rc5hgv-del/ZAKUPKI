@@ -63,7 +63,7 @@ function cleanFilter(input: unknown): TenderFilter {
   const result: TenderFilter = {
     query: optionalText(value.query, MAX_TEXT, "Запрос"), includeKeywords: words(value.includeKeywords, "Ключевые слова"), excludeKeywords: words(value.excludeKeywords, "Исключения"),
     minPrice: finite(value.minPrice, "Минимальная цена"), maxPrice: finite(value.maxPrice, "Максимальная цена"), customer: optionalText(value.customer, MAX_TEXT, "Заказчик"),
-    location: optionalText(value.location, MAX_TEXT, "Регион"), status: optionalText(value.status, 100, "Статус"), okpd2: words(value.okpd2, "ОКПД2"),
+    location: optionalText(value.location, MAX_TEXT, "Регион"), districts: words(value.districts, "Районы"), status: optionalText(value.status, 100, "Статус"), okpd2: words(value.okpd2, "ОКПД2"),
     deadlineFrom: safeDate(value.deadlineFrom, "Начало срока"), deadlineTo: safeDate(value.deadlineTo, "Конец срока"), minDaysLeft: finite(value.minDaysLeft, "Минимум дней", -3650, 36500),
     maxDaysLeft: finite(value.maxDaysLeft, "Максимум дней", -3650, 36500), requireDocuments: value.requireDocuments as boolean | undefined, sort,
   };
