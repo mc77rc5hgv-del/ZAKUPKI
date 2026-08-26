@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 import { config, portalUrl } from "./config.js";
 import { RtsError, classifyNavigationError, describeRtsErrorCode } from "./errors.js";
+import { assessRtsSession } from "../../domain/session-detection.js";
 
 let context: BrowserContext | undefined;
 let page: Page | undefined;
@@ -76,7 +77,8 @@ export async function getPage(): Promise<Page> {
     });
   }
   context.setDefaultTimeout(config.timeoutMs);
-  page = context.pages()[0] ?? (await context.newPage());
+  const pages = context.pages().filter(candidate => !candidate.isClosed());
+  page = [...pages].reverse().find(candidate => { try { return new URL(candidate.url()).origin === config.baseUrl; } catch { return false; } }) ?? pages.at(-1) ?? (await context.newPage());
   return page;
 }
 
@@ -88,12 +90,25 @@ export async function open(pathname = "/zapros/"): Promise<Page> {
 }
 
 export async function status() {
-  const p = await getPage();
-  const body = (await p.locator("body").innerText().catch(() => "")).slice(0, 5000);
+  await getPage();
+  const candidates = (context?.pages() ?? []).filter(candidate => { try { return !candidate.isClosed() && new URL(candidate.url()).origin === config.baseUrl; } catch { return false; } });
+  const inspected = await Promise.all((candidates.length ? candidates : [page!]).map(async candidate => {
+    const evidence = await candidate.locator("body").evaluate(body => {
+      const visible = (element: Element) => { const style=getComputedStyle(element),rect=element.getBoundingClientRect();return style.display!=="none"&&style.visibility!=="hidden"&&rect.width>0&&rect.height>0; };
+      const controls=[...body.querySelectorAll("a,button,input[type=submit]")].filter(visible).slice(0,500).map(element=>`${element.textContent??""} ${element.getAttribute("aria-label")??""} ${element.getAttribute("title")??""} ${element.getAttribute("href")??""}`).join(" ");
+      return { body:(body as HTMLElement).innerText.slice(0,30_000),controls:controls.slice(0,20_000),hasPassword:Boolean(body.querySelector('input[type="password"]')) };
+    }).catch(() => ({ body:"", controls:"", hasPassword:false }));
+    return { candidate, evidence, assessment:assessRtsSession(evidence) };
+  }));
+  const selected = inspected.sort((a,b)=>b.assessment.score-a.assessment.score)[0];
+  if (selected) page=selected.candidate;
+  const p=page!;const body=selected?.evidence.body??"";const assessment=selected?.assessment??assessRtsSession({body});
   return {
     url: p.url(), title: await p.title(),
     antiDdos: /Anti-DDoS|Проверяем ваш браузер/i.test(body),
-    likelyLoggedIn: /выйти|личный кабинет|мои (заявки|предложения)/i.test(body),
+    likelyLoggedIn: assessment.likelyLoggedIn,
+    authSignals: assessment.signals,
+    portalTabs: candidates.length,
     headed: config.cdpUrl ? true : !config.headless,
     connectionMode: config.cdpUrl ? "existing_chrome" : "managed_profile",
   };
