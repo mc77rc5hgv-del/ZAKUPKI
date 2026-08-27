@@ -1,6 +1,7 @@
 import http,{type IncomingMessage,type ServerResponse} from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { randomBytes } from "node:crypto";
 import { assertOwner,assertRtsAccess,botConfig,rtsAccess } from "../../config/bot.js";
 import { callForUser } from "../../application/mcp-client.js";
 import { addFavorite,addProfile,addWatch,dismissTrackedChange,loadStore,recordTrackedChange,removeFavorite,removeProfile,removeWatch,setPipeline,toggleWatch,user,type PipelineStage } from "../../infrastructure/persistence/bot-store.js";
@@ -8,6 +9,7 @@ import { createPairingCode,devicesForOwner,loadDeviceStore,publicDevice,redeemPa
 import { generateDeviceToken } from "../../infrastructure/security/pairing.js";
 import { attachAgentHub,connectedDeviceId,disconnectDevice,isOwnerConnected,lastDisconnectReason } from "../../infrastructure/agent-hub/server.js";
 import { validateTelegramInitData,type TelegramWebUser } from "./telegram-auth.js";
+import { toCsv,type CsvColumn } from "../../domain/csv-export.js";
 
 type RequestContext={user:TelegramWebUser;body:Record<string,any>};
 const publicDir=path.resolve("public/miniapp");
@@ -22,6 +24,58 @@ function authenticate(req:IncomingMessage){
   const auth=validateTelegramInitData(String(req.headers["x-telegram-init-data"]??""),botConfig.token,botConfig.telegramAuthMaxAgeSeconds);
   if(!botConfig.allowedUsers.has(auth.user.id))throw new Error("Пользователь не входит в список доступа");return auth.user;
 }
+// CSV/Excel export. The Mini App runs inside Telegram's WebView, which does
+// not reliably let a page trigger a file download — so export is a two-step
+// handoff: an authenticated POST builds the CSV and returns a short-lived,
+// single-use download token, then the client opens the download URL with
+// Telegram's tg.openLink(), which escapes the WebView into a real browser
+// where the normal download flow works. The token itself is the auth for
+// that second request (it is unguessable and burns after one use), since a
+// plain navigation cannot carry the Telegram initData header.
+type ExportEntry={csv:string;filename:string;expiresAt:number};
+const exportTokens=new Map<string,ExportEntry>();
+const EXPORT_TOKEN_TTL_MS=2*60_000;
+function issueExportToken(csv:string,filename:string){
+  const now=Date.now();
+  for(const [t,e] of exportTokens)if(e.expiresAt<now)exportTokens.delete(t); // opportunistic sweep
+  const token=randomBytes(24).toString("base64url");
+  exportTokens.set(token,{csv,filename,expiresAt:now+EXPORT_TOKEN_TTL_MS});
+  return {token};
+}
+function serveExportDownload(req:IncomingMessage,res:ServerResponse){
+  const url=new URL(req.url??"/","http://local");
+  const token=url.searchParams.get("token")??"";
+  const entry=exportTokens.get(token);
+  if(!entry||entry.expiresAt<Date.now()){exportTokens.delete(token);res.writeHead(404,securityHeaders);res.end("Not found");return;}
+  exportTokens.delete(token); // single-use
+  res.writeHead(200,{...securityHeaders,"content-type":"text/csv; charset=utf-8","content-disposition":`attachment; filename="${entry.filename}"`,"cache-control":"no-store"});
+  res.end(entry.csv);
+}
+const str=(v:unknown,max=300)=>typeof v==="string"?v.slice(0,max):"";
+const num=(v:unknown)=>typeof v==="number"&&Number.isFinite(v)?v:undefined;
+function sanitizeSearchRows(input:unknown){
+  if(!Array.isArray(input))return [] as Record<string,unknown>[];
+  return input.slice(0,2000).map(row=>{
+    const r=row&&typeof row==="object"?row as Record<string,unknown>:{};
+    return {title:str(r.title,300),url:str(r.url,500),customer:str(r.customer,200),price:num(r.price),okpd2:Array.isArray(r.okpd2)?r.okpd2.filter(x=>typeof x==="string").slice(0,20).join(", "):"",location:str(r.location,200),deadlineAt:str(r.deadlineAt,40),daysLeft:num(r.daysLeft),status:str(r.status,100),publishedAt:str(r.publishedAt,40),hasDocuments:r.hasDocuments===true};
+  });
+}
+const STAGE_LABELS:Record<string,string>={new:"Новая",review:"На рассмотрении",decision:"Решение",prepare:"Подготовка",submitted:"Подана",won:"Выигран",lost:"Проигран",archived:"В архиве"};
+const EXPORT_COLUMNS:Record<string,CsvColumn<any>[]>={
+  search:[{header:"Название",value:r=>r.title},{header:"Ссылка",value:r=>r.url},{header:"Заказчик",value:r=>r.customer},{header:"Цена",value:r=>r.price??""},{header:"ОКПД2",value:r=>r.okpd2},{header:"Регион",value:r=>r.location},{header:"Опубликовано",value:r=>r.publishedAt},{header:"Срок подачи",value:r=>r.deadlineAt},{header:"Осталось дней",value:r=>r.daysLeft??""},{header:"Статус",value:r=>r.status},{header:"Документы",value:r=>r.hasDocuments?"есть":"нет"}],
+  pipeline:[{header:"Название",value:r=>r.title},{header:"Ссылка",value:r=>r.url},{header:"Этап",value:r=>STAGE_LABELS[r.stage]??r.stage},{header:"Заметка",value:r=>r.note??""},{header:"Ответственный",value:r=>r.assignee??""},{header:"Срок",value:r=>r.deadlineAt??""},{header:"Обновлено",value:r=>r.updatedAt}],
+  favorites:[{header:"Название",value:r=>r.title},{header:"Ссылка",value:r=>r.url},{header:"Добавлено",value:r=>r.addedAt}],
+  "tracked-changes":[{header:"Название",value:r=>r.title},{header:"Ссылка",value:r=>r.url},{header:"Обнаружено",value:r=>r.detectedAt},{header:"Изменения",value:r=>(r.changes??[]).map((c:any)=>`${c.field}: ${JSON.stringify(c.before)} → ${JSON.stringify(c.after)}`).join("; ")}],
+};
+function buildExport(kind:string,ctx:RequestContext):{csv:string;filename:string}{
+  const today=new Date().toISOString().slice(0,10);
+  if(kind==="search")return {csv:toCsv(sanitizeSearchRows(ctx.body.rows),EXPORT_COLUMNS.search),filename:`zakupki-search-${today}.csv`};
+  if(kind==="pipeline")return {csv:toCsv(Object.values(user(ctx.user.id).pipeline),EXPORT_COLUMNS.pipeline),filename:`zakupki-pipeline-${today}.csv`};
+  if(kind==="favorites")return {csv:toCsv(Object.values(user(ctx.user.id).favorites),EXPORT_COLUMNS.favorites),filename:`zakupki-favorites-${today}.csv`};
+  if(kind==="tracked-changes")return {csv:toCsv(Object.values(user(ctx.user.id).trackedChanges),EXPORT_COLUMNS["tracked-changes"]),filename:`zakupki-changes-${today}.csv`};
+  throw new Error("Неизвестный тип экспорта");
+}
+
 const routes=new Map<string,(ctx:RequestContext)=>Promise<unknown>>([
   ["GET /api/connection",async ctx=>{const access=rtsAccess(ctx.user.id);const online=access.isOwner?isOwnerConnected(ctx.user.id):undefined;return {telegramVerified:true,accountOwner:access.isOwner,ownerConfigured:access.ownerConfigured,mode:botConfig.rtsTransport==="hub"?"agent":botConfig.rtsHeadless?"cloud":"local",cloudBlocked:access.cloudBlocked,agentOnline:online,deviceRevoked:access.isOwner&&!online?lastDisconnectReason(ctx.user.id)==="DEVICE_REVOKED":false,acceptsCredentials:false};}],
   ["POST /api/connection/open",async ctx=>{assertRtsAccess(ctx.user.id);const session=await callForUser<any>(ctx.user.id,"rts_session_status",{openLogin:true});return {opened:true,connected:Boolean(session.likelyLoggedIn&&!session.antiDdos),antiDdos:Boolean(session.antiDdos),headed:Boolean(session.headed)};}],
@@ -56,6 +110,8 @@ const routes=new Map<string,(ctx:RequestContext)=>Promise<unknown>>([
   ["POST /api/pipeline",async ctx=>setPipeline(ctx.user.id,ctx.body.url,ctx.body.title??ctx.body.url,ctx.body.stage as PipelineStage,ctx.body.note,ctx.body.deadlineAt,ctx.body.assignee)],
   ["POST /api/profile",async ctx=>ctx.body.action==="remove"?(await removeProfile(ctx.user.id,ctx.body.id),user(ctx.user.id).profiles):addProfile(ctx.user.id,ctx.body.name,ctx.body.filter)],
   ["POST /api/watch",async ctx=>ctx.body.action==="remove"?(await removeWatch(ctx.user.id,ctx.body.id),user(ctx.user.id).watches):ctx.body.action==="toggle"?toggleWatch(ctx.user.id,ctx.body.id):addWatch(ctx.user.id,ctx.body.name,ctx.body.filter)],
+  ["POST /api/export",async ctx=>{const {csv,filename}=buildExport(String(ctx.body.kind??""),ctx);return issueExportToken(csv,filename);}],
+  ["POST /api/price-stats",ctx=>platform(ctx,"rts_price_stats")],
 ]);
 
 async function platform(ctx:RequestContext,tool:string,args:Record<string,unknown>=ctx.body){assertRtsAccess(ctx.user.id);return callForUser(ctx.user.id,tool,args);}
@@ -112,6 +168,7 @@ export async function startWebServer(){
   const server=http.createServer(async(req,res)=>{try{
     const url=new URL(req.url??"/","http://local");if(url.pathname==="/health")return json(res,200,{ok:true,service:"zakupki-miniapp"});
     if(req.method==="POST"&&url.pathname==="/api/connection/devices/pair")return handleDevicePair(req,res);
+    if(req.method==="GET"&&url.pathname==="/api/export/download")return serveExportDownload(req,res);
     if(url.pathname.startsWith("/api/")){const user=authenticate(req);if(rateLimited(apiAttempts,String(user.id),300,60_000))return json(res,429,{ok:false,error:"Слишком много запросов. Повторите через минуту."});const handler=routes.get(`${req.method} ${url.pathname}`);if(!handler)return json(res,404,{error:"Маршрут не найден"});const body=req.method==="POST"?await readBody(req):{};return json(res,200,{ok:true,data:await withRequestSlot(user.id,()=>handler({user,body}))});}
     if(await serveStatic(req,res))return;json(res,404,{error:"Страница не найдена"});
   }catch(error){console.error("web request failed",req.method,new URL(req.url??"/","http://local").pathname,error instanceof Error?error.name:"Error");const raw=String(error);json(res,/доступ|подпись|Telegram|сессия|владелец|принадлежит|авторизация/i.test(raw)?401:/TOO_MANY_IN_FLIGHT/.test(raw)?429:400,{ok:false,error:publicError(error)});}});

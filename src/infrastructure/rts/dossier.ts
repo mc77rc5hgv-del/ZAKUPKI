@@ -7,12 +7,14 @@ import { compareDossiers, fingerprintDossier, type TenderDossier } from "../../d
 import { config, portalUrl } from "./config.js";
 import { inspectPortal } from "./inventory.js";
 import { visibleSnapshot } from "./extract.js";
+import { recordObservedTenders } from "./tender-history.js";
 
 export async function buildDossier(page:Page):Promise<TenderDossier>{
   const snap=await visibleSnapshot(page);const inventory=await inspectPortal(page);const url=portalUrl(page.url());const title=await page.title();
   const documents=inventory.controls.filter(x=>x.kind==="link"&&x.href&&/download|document|file|attachment|\.pdf|\.docx?|\.xlsx?|\.zip/i.test(`${x.href} ${x.label}`)).map(x=>({name:x.label||"document",url:x.href!}));
   const tender=normalizeTender({title,url,summary:snap.text});const analysis=analyzeDeterministic(tender);
   const base={url,title,text:snap.text,tender,analysis,documents,tables:inventory.tables.map(x=>({headers:x.headers,rows:x.rows})),capabilities:inventory.capabilities};
+  await recordObservedTenders([tender]).catch(()=>{});
   return {...base,capturedAt:new Date().toISOString(),fingerprint:fingerprintDossier(base)};
 }
 const snapshotFile=(url:string)=>path.join(config.snapshotDir,`${createHash("sha256").update(url).digest("hex")}.json`);

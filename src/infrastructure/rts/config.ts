@@ -29,6 +29,7 @@ export const config = {
   profileDir: path.resolve(process.env.RTS_PROFILE_DIR ?? ".rts-profile"),
   downloadDir: path.resolve(process.env.RTS_DOWNLOAD_DIR ?? "downloads"),
   snapshotDir: path.resolve(process.env.RTS_SNAPSHOT_DIR ?? ".rts-snapshots"),
+  historyDir: path.resolve(process.env.RTS_HISTORY_DIR ?? ".rts-history"),
   timeoutMs: number(process.env.RTS_TIMEOUT_MS, 30_000, 1_000, 120_000),
   navigationRetries: Math.round(number(process.env.RTS_NAVIGATION_RETRIES, 3, 1, 10)),
   proxy: proxyServer

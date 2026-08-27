@@ -19,6 +19,7 @@ export const RPC_METHODS = new Set([
   "rts_assess_readiness",
   "rts_bid_economics",
   "rts_build_workplan",
+  "rts_price_stats",
   "rts_extract_tables",
   "rts_download_all_documents",
   "rts_screenshot",
