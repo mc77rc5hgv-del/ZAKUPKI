@@ -11,6 +11,7 @@
     "build": "tsc -p tsconfig.json",
     "build:railway": "playwright install chromium && tsc -p tsconfig.json",
     "check": "tsc -p tsconfig.json --noEmit",
+    "test:ai": "node tests/ai-sourcing.mjs",
     "test": "node tests/smoke.mjs && node tests/procurement.mjs && node tests/territorial-monitor.mjs && node tests/session-detection.mjs && node tests/capabilities.mjs && node tests/dossier.mjs && node tests/participation.mjs && node tests/telegram-auth.mjs && node tests/rts-access.mjs && node tests/rpc-replay.mjs && node tests/connection-api.mjs && node tests/device-pairing.mjs && node tests/device-ownership.mjs && node tests/device-revocation.mjs && node tests/rpc-auth.mjs && node tests/user-isolation.mjs && node tests/storage-encryption.mjs && node tests/storage-migration.mjs && node tests/storage-concurrency.mjs && node tests/secure-transport.mjs && node tests/rpc-safety.mjs && node tests/security-regressions.mjs && node tests/web-error-safety.mjs && node tests/miniapp-security.mjs && node tests/profile-safety.mjs && node tests/operation-queue.mjs && node tests/pipeline.mjs && node tests/tracked-changes-store.mjs && node tests/tracked-changes-api.mjs && node tests/csv-export.mjs && node tests/tender-history.mjs && node tests/export-api.mjs && node tests/price-stats-api.mjs && node tests/miniapp-csp-progress.mjs && node tests/miniapp-dossier-extras.mjs",
     "bot": "node dist/entrypoints/telegram.js",
     "start": "node dist/entrypoints/mcp.js",
@@ -21,7 +22,7 @@
     "local-agent": "node dist/entrypoints/local-agent.js",
     "pair-device": "node scripts/pair-device.mjs",
     "open-connected-chrome": "node scripts/start-connected-chrome.mjs",
-    "deploy:check": "pnpm install --frozen-lockfile && pnpm run build && pnpm run test",
+    "deploy:check": "pnpm install --frozen-lockfile && pnpm run build && pnpm run test && pnpm run test:ai",
     "dev": "tsx src/entrypoints/mcp.ts",
     "install-browser": "playwright install chromium",
     "connect-account": "node scripts/connect-account.mjs"
@@ -32,11 +33,13 @@
     "openai": "^5.19.1",
     "playwright": "^1.55.0",
     "ws": "^8.21.3",
+    "yauzl": "^3.4.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/node": "^22.17.2",
     "@types/ws": "^8.5.13",
+    "@types/yauzl": "^3.4.0",
     "tsx": "^4.20.5",
     "typescript": "^5.9.2"
   },

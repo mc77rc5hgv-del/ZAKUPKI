@@ -4,6 +4,7 @@ export const mainMenu = (miniAppUrl="") => {
   const keyboard=new InlineKeyboard();
   if(miniAppUrl)keyboard.webApp("Открыть Mini App",miniAppUrl).row();
   return keyboard.text("🔎 Поиск", "search").text("🎛 Фильтры", "filters").row()
+  .text("🤖 ИИ-поиск товара", "agent").row()
   .text("📄 Карточка", "card").text("🧠 Анализ", "analyze").row()
   .text("🗂 Досье", "dossier").text("📝 Черновик", "drafthelp").row()
   .text("✅ Готовность", "readiness").text("💰 Экономика", "economicshelp").row()
@@ -22,6 +23,7 @@ export const helpText = `Бот работает через локальный M
 /deadlines 14 — ближайшие сроки
 /card URL — карточка
 /analyze URL — анализ рисков
+/agent URL или текст — найти товары, аналоги, риски и экономику
 /dossier URL — полное досье закупки
 /track URL — сохранить снимок и найти изменения
 /compare URL1 URL2 — сравнить закупки
@@ -56,6 +58,7 @@ export const botCommands = [
   { command: "digest", description: "Дайджест по профилям" },
   { command: "card", description: "Карточка закупки" },
   { command: "analyze", description: "AI-анализ рисков" },
+  { command: "agent", description: "ИИ-поиск товаров и аналогов" },
   { command: "dossier", description: "Полное досье закупки" },
   { command: "track", description: "Контроль изменений карточки" },
   { command: "compare", description: "Сравнить две закупки" },

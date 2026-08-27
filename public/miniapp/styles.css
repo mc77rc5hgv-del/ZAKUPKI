@@ -110,6 +110,10 @@ textarea { min-height: 96px; resize: vertical; }
 .status-dot.check { background: var(--warning); box-shadow: 0 0 0 3px color-mix(in srgb, var(--warning) 14%, transparent); }
 .status-dot.blocked { background: var(--danger); box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 14%, transparent); }
 .data-view { max-height: 440px; margin: 0; overflow: auto; padding: 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); color: var(--text); font-size: 12px; white-space: pre-wrap; }
+.ai-agent-card textarea { min-height: 160px; resize: vertical; }
+.ai-agent-card .muted { max-width: 75ch; }
+#ai-agent-status[role="alert"] { color: var(--danger); font-weight: 650; }
+.tender { overflow-wrap: anywhere; }
 .bottom-nav { position: fixed; z-index: 30; right: 0; bottom: 0; left: 0; display: grid; grid-template-columns: repeat(5, 1fr); padding: 5px 4px calc(5px + var(--safe-bottom)); border-top: 1px solid var(--line); background: color-mix(in srgb, var(--surface) 96%, transparent); backdrop-filter: blur(18px) saturate(150%); }
 .bottom-nav button { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 4px 2px; border-radius: 10px; background: transparent; color: var(--muted); font-size: 10px; transition: color var(--duration-fast), background var(--duration-fast); }
 .bottom-nav button:hover { background: var(--surface-2); }

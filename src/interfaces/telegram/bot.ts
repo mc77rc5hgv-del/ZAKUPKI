@@ -1,4 +1,4 @@
-import { Bot, InlineKeyboard } from "grammy";
+import { Bot, InlineKeyboard, InputFile } from "grammy";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { setTimeout as delay } from "node:timers/promises";
 import { assertBotConfig, assertOwner, assertRtsAccess, botConfig, rtsAccess } from "../../config/bot.js";
@@ -7,6 +7,9 @@ import { devicesForOwner, loadDeviceStore, revokeDevice } from "../../infrastruc
 import { connectedDeviceId, disconnectDevice, isOwnerConnected } from "../../infrastructure/agent-hub/server.js";
 import { callForUser, closeMcp } from "../../application/mcp-client.js";
 import { analyzeTender } from "../../infrastructure/ai/tender-analysis.js";
+import { aiAgentAvailable, runSourcingAgent } from "../../infrastructure/ai/sourcing-agent.js";
+import { extractDocxText } from "../../infrastructure/documents/docx.js";
+import { sourcingReportCsv, type SourcingReport } from "../../domain/ai-agent.js";
 import { clip, esc, requestList, tenderList } from "./format.js";
 import { monitorOnce } from "./monitor.js";
 import { describeFilter, parseFilter } from "./filters.js";
@@ -23,7 +26,8 @@ function describeError(e: unknown): string {
   return "Операция не выполнена. Проверьте подключение к РТС и повторите попытку.";
 }
 const bot = new Bot(botConfig.token);
-const pending = new Map<number, "search" | "watch" | "card" | "analyze" | "filter">();
+const pending = new Map<number, "search" | "watch" | "card" | "analyze" | "filter" | "agent">();
+const runningAgent = new Set<number>();
 const favoriteTokens = new Map<string, { ownerId: number; url: string; expiresAt: number }>();
 const favoriteKey = (url: string) => Buffer.from(url).toString("base64url").slice(-24);
 const actor = new AsyncLocalStorage<number>();
@@ -42,6 +46,7 @@ bot.command("role", ctx => ctx.reply("Выберите рабочую роль:"
 bot.command("search", async ctx => runSearch(ctx, ctx.match.trim()));
 bot.command("card", async ctx => runCard(ctx, ctx.match.trim(), false));
 bot.command("analyze", async ctx => runCard(ctx, ctx.match.trim(), true));
+bot.command("agent", async ctx => runAgentInput(ctx, ctx.match.trim(), "сообщение Telegram"));
 bot.command("watch", async ctx => { const q=ctx.match.trim(); if (!q) return void await ctx.reply("Укажите запрос: /watch канцелярские товары"); const w=await addWatch(ctx.from!.id,q); await ctx.reply(`Мониторинг «${q}» создан: ${w.id.slice(0,8)}`); });
 bot.command("watcharea", async ctx => { const districts=ctx.match.split(/[,|]/).map(x=>x.trim()).filter(Boolean); if(!districts.length)return void await ctx.reply("Укажите район: /watcharea Каневской район\nНесколько: /watcharea Каневской район, Динской район"); const name=`Районы: ${districts.join(", ")}`; const w=await addWatch(ctx.from!.id,name,{districts}); await ctx.reply(`🔔 Территориальный мониторинг создан.\n${describeFilter(w.filter)}\n\nПервый запуск запомнит текущие закупки; уведомления придут только о новых.`); });
 bot.command("favorites", showFavorites);
@@ -71,6 +76,7 @@ bot.command("security",async ctx=>ctx.reply(securityText));
 bot.callbackQuery("search", async ctx => { pending.set(ctx.from.id,"search"); await ctx.answerCallbackQuery(); await ctx.reply("Введите ключевые слова, номер или заказчика:"); });
 bot.callbackQuery("card", async ctx => { pending.set(ctx.from.id,"card"); await ctx.answerCallbackQuery(); await ctx.reply("Пришлите URL карточки запроса:"); });
 bot.callbackQuery("analyze", async ctx => { pending.set(ctx.from.id,"analyze"); await ctx.answerCallbackQuery(); await ctx.reply("Пришлите URL карточки для полного анализа:"); });
+bot.callbackQuery("agent", async ctx => { pending.set(ctx.from.id,"agent"); await ctx.answerCallbackQuery(); await ctx.reply("Пришлите ссылку РТС, текст технического задания или Word-файл .docx. Файл обрабатывается в памяти и передаётся OpenAI только для запрошенного анализа."); });
 bot.callbackQuery("watches", async ctx => { await ctx.answerCallbackQuery(); const watches=user(ctx.from.id).watches; if(!watches.length)return void await ctx.reply("Мониторингов пока нет.",{reply_markup:new InlineKeyboard().text("➕ Добавить", "watch:add")}); for(const w of watches)await ctx.reply(`${w.enabled?"🟢":"⏸"} ${w.name}\n${describeFilter(w.filter)}\nУдалить: /unwatch_${w.id}`,{reply_markup:new InlineKeyboard().text(w.enabled?"Приостановить":"Включить",`watch:toggle:${w.id}`)}); });
 bot.callbackQuery("watch:add", async ctx => { pending.set(ctx.from.id,"watch"); await ctx.answerCallbackQuery(); await ctx.reply("Введите поисковую фразу для мониторинга:"); });
 bot.callbackQuery("favorites", async ctx => { await ctx.answerCallbackQuery(); await showFavorites(ctx); });
@@ -96,11 +102,34 @@ bot.callbackQuery(/^fav:del:(.+)$/, async ctx => { const url=Object.keys(user(ct
 
 bot.on("message:text", async ctx => {
   if (ctx.message.text.startsWith("/unwatch_")) { await removeWatch(ctx.from.id,ctx.message.text.slice(9)); return void await ctx.reply("Мониторинг удалён."); }
-  const mode=pending.get(ctx.from.id); if (!mode) return; pending.delete(ctx.from.id);
+  const mode=pending.get(ctx.from.id);
+  if (!mode) {
+    if (/https:\/\/krd-market\.rts-tender\.ru\/\S+/i.test(ctx.message.text)) await runAgentInput(ctx,ctx.message.text,"ссылка РТС");
+    return;
+  }
+  pending.delete(ctx.from.id);
   if (mode==="search") await runSearch(ctx,ctx.message.text);
   else if(mode==="filter") await saveFilterCommand(ctx,ctx.message.text);
   else if (mode==="watch") { await addWatch(ctx.from.id,ctx.message.text); await ctx.reply("Мониторинг создан."); }
+  else if (mode==="agent") await runAgentInput(ctx,ctx.message.text,"сообщение Telegram");
   else await runCard(ctx,ctx.message.text,mode==="analyze");
+});
+bot.on("message:document", async ctx => {
+  const document=ctx.message.document;
+  const name=document.file_name??"document.docx";
+  const acceptedMime=new Set(["application/vnd.openxmlformats-officedocument.wordprocessingml.document","application/octet-stream","application/zip"]);
+  if(!/\.docx$/i.test(name)||(document.mime_type&&!acceptedMime.has(document.mime_type)))return void await ctx.reply("Поддерживаются только файлы Word .docx. Старый формат .doc сначала сохраните в Word как .docx.");
+  if((document.file_size??0)>10*1024*1024)return void await ctx.reply("Файл больше 10 МБ. Удалите лишние изображения или разделите документ.");
+  try{
+    const file=await ctx.api.getFile(document.file_id);
+    if(!file.file_path)throw new Error("TELEGRAM_FILE_PATH_MISSING");
+    const response=await fetch(`https://api.telegram.org/file/bot${botConfig.token}/${file.file_path}`,{signal:AbortSignal.timeout(30_000)});
+    if(!response.ok)throw new Error("TELEGRAM_FILE_DOWNLOAD_FAILED");
+    const length=Number(response.headers.get("content-length")??0);if(length>10*1024*1024)throw new Error("DOCX_TOO_LARGE");
+    const buffer=Buffer.from(await response.arrayBuffer());
+    const text=await extractDocxText(buffer);
+    await runAgentInput(ctx,text,`Word-файл ${name}`);
+  }catch(error){console.warn("docx processing failed",error instanceof Error?error.message:"Error");await ctx.reply(/TOO_LARGE/.test(String(error))?"Документ слишком большой после распаковки.":"Не удалось безопасно прочитать .docx. Проверьте файл и повторите попытку.");}
 });
 bot.catch(e => console.error("bot", e.error));
 
@@ -175,4 +204,34 @@ while(!stopping){
     if(/409: Conflict|terminated by other getUpdates request/i.test(String(error))){console.warn("Telegram polling занят предыдущим контейнером; повтор через 5 секунд");await delay(5_000);continue;}
     throw error;
   }
+}
+
+function reportMessage(report:SourcingReport):string{
+  const decision=report.goNoGo==="GO"?"✅ УЧАСТВОВАТЬ":report.goNoGo==="CONDITIONAL"?"⚠️ УСЛОВНО":"⛔ НЕ УЧАСТВОВАТЬ";
+  const products=report.candidates.slice(0,12).map((item,index)=>{
+    const price=item.totalUnitCostRub===null?"цена требует проверки":`${item.totalUnitCostRub.toLocaleString("ru-RU")} ₽/ед.`;
+    const deviations=item.deviations.length?`\n   Отклонения: ${item.deviations.join("; ")}`:"";
+    return `${index+1}. ${item.matchType==="exact"?"✅":item.matchType==="worse"?"❌":"🟡"} ${item.title}\n   ${item.marketplace} · ${price} · ${item.matchScore}%\n   ${item.url}${deviations}`;
+  }).join("\n\n");
+  const risks=report.risks.slice(0,8).map(x=>`• ${x.level.toUpperCase()}: ${x.title} — ${x.action}`).join("\n");
+  return clip(`🧠 ИИ-агент снабжения\n\n${report.summary}\n\nРешение: ${decision}\n${report.goNoGoReasons.map(x=>`• ${x}`).join("\n")}\n\nНайденные товары (${report.candidates.length}):\n${products||"Подтверждённых карточек на разрешённых российских площадках не найдено."}\n\nРиски:\n${risks||"Явные риски не выделены."}\n\n${report.deliveryEstimateNote}\n\n⚠️ ${report.disclaimer}`);
+}
+
+async function runAgentInput(ctx:any,input:string,label:string){
+  if(!input.trim()){pending.set(ctx.from.id,"agent");return ctx.reply("Пришлите ссылку РТС, текст технического задания или файл .docx.");}
+  if(!aiAgentAvailable())return ctx.reply("ИИ-агент установлен, но администратор ещё не включил OPENAI_API_KEY и AI_AGENT_ENABLED в Railway.");
+  if(runningAgent.has(ctx.from.id))return ctx.reply("Предыдущий анализ ещё выполняется. Дождитесь результата.");
+  runningAgent.add(ctx.from.id);const wait=await ctx.reply("Разбираю требования и ищу товары на российских площадках. Это может занять несколько минут…");
+  try{
+    let source=input;let sourceLabel=label;
+    const rtsUrl=input.match(/https:\/\/krd-market\.rts-tender\.ru\/\S+/i)?.[0]?.replace(/[)>.,]+$/g,"");
+    if(rtsUrl){const tender=await call<any>("rts_get_request",{url:rtsUrl});source=JSON.stringify({title:tender.title,url:tender.url,text:tender.text,documents:tender.documents,tables:tender.tables});sourceLabel=`карточка РТС ${tender.title??rtsUrl}`;}
+    const report=await runSourcingAgent({sourceText:source,sourceLabel,userId:ctx.from.id,role:user(ctx.from.id).role});
+    await ctx.api.editMessageText(ctx.chat.id,wait.message_id,reportMessage(report),{link_preview_options:{is_disabled:true}});
+    await ctx.replyWithDocument(new InputFile(Buffer.from(sourcingReportCsv(report),"utf8"),`ai-sourcing-${new Date().toISOString().slice(0,10)}.csv`),{caption:"Полная таблица найденных товаров, отклонений и рисков. Откройте в Excel."});
+  }catch(error){
+    console.error("AI sourcing failed",error instanceof Error?error.name:"Error");
+    const message=/AGENT_OFFLINE|RTS_/.test(String(error))?describeError(error):/AI_SOURCE_TOO_SHORT/.test(String(error))?"Недостаточно текста для анализа.":"ИИ-анализ не завершён. Повторите позже или сократите документ.";
+    await ctx.api.editMessageText(ctx.chat.id,wait.message_id,`Ошибка: ${message}`);
+  }finally{runningAgent.delete(ctx.from.id);}
 }

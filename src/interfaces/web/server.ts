@@ -10,6 +10,8 @@ import { generateDeviceToken } from "../../infrastructure/security/pairing.js";
 import { attachAgentHub,connectedDeviceId,disconnectDevice,isOwnerConnected,lastDisconnectReason } from "../../infrastructure/agent-hub/server.js";
 import { validateTelegramInitData,type TelegramWebUser } from "./telegram-auth.js";
 import { toCsv,type CsvColumn } from "../../domain/csv-export.js";
+import { normalizeSourcingReport,sourcingReportCsv,sourcingReportSchema } from "../../domain/ai-agent.js";
+import { aiAgentAvailable,runSourcingAgent } from "../../infrastructure/ai/sourcing-agent.js";
 
 type RequestContext={user:TelegramWebUser;body:Record<string,any>};
 const publicDir=path.resolve("public/miniapp");
@@ -69,6 +71,7 @@ const EXPORT_COLUMNS:Record<string,CsvColumn<any>[]>={
 };
 function buildExport(kind:string,ctx:RequestContext):{csv:string;filename:string}{
   const today=new Date().toISOString().slice(0,10);
+  if(kind==="ai-sourcing")return {csv:sourcingReportCsv(normalizeSourcingReport(sourcingReportSchema.parse(ctx.body.report))),filename:`ai-sourcing-${today}.csv`};
   if(kind==="search")return {csv:toCsv(sanitizeSearchRows(ctx.body.rows),EXPORT_COLUMNS.search),filename:`zakupki-search-${today}.csv`};
   if(kind==="pipeline")return {csv:toCsv(Object.values(user(ctx.user.id).pipeline),EXPORT_COLUMNS.pipeline),filename:`zakupki-pipeline-${today}.csv`};
   if(kind==="favorites")return {csv:toCsv(Object.values(user(ctx.user.id).favorites),EXPORT_COLUMNS.favorites),filename:`zakupki-favorites-${today}.csv`};
@@ -77,7 +80,7 @@ function buildExport(kind:string,ctx:RequestContext):{csv:string;filename:string
 }
 
 const routes=new Map<string,(ctx:RequestContext)=>Promise<unknown>>([
-  ["GET /api/connection",async ctx=>{const access=rtsAccess(ctx.user.id);const online=access.isOwner?isOwnerConnected(ctx.user.id):undefined;return {telegramVerified:true,accountOwner:access.isOwner,ownerConfigured:access.ownerConfigured,mode:botConfig.rtsTransport==="hub"?"agent":botConfig.rtsHeadless?"cloud":"local",cloudBlocked:access.cloudBlocked,agentOnline:online,deviceRevoked:access.isOwner&&!online?lastDisconnectReason(ctx.user.id)==="DEVICE_REVOKED":false,acceptsCredentials:false};}],
+  ["GET /api/connection",async ctx=>{const access=rtsAccess(ctx.user.id);const online=access.isOwner?isOwnerConnected(ctx.user.id):undefined;return {telegramVerified:true,accountOwner:access.isOwner,ownerConfigured:access.ownerConfigured,mode:botConfig.rtsTransport==="hub"?"agent":botConfig.rtsHeadless?"cloud":"local",cloudBlocked:access.cloudBlocked,agentOnline:online,deviceRevoked:access.isOwner&&!online?lastDisconnectReason(ctx.user.id)==="DEVICE_REVOKED":false,acceptsCredentials:false,developmentBypass:botConfig.miniAppDevBypass};}],
   ["POST /api/connection/open",async ctx=>{assertRtsAccess(ctx.user.id);const session=await callForUser<any>(ctx.user.id,"rts_session_status",{openLogin:true});return {opened:true,connected:Boolean(session.likelyLoggedIn&&!session.antiDdos),antiDdos:Boolean(session.antiDdos),headed:Boolean(session.headed)};}],
   ["POST /api/connection/check",async ctx=>{assertRtsAccess(ctx.user.id);const session=await callForUser<any>(ctx.user.id,"rts_session_status");return {connected:Boolean(session.likelyLoggedIn&&!session.antiDdos),antiDdos:Boolean(session.antiDdos),headed:Boolean(session.headed)};}],
   ["POST /api/connection/disconnect",async ctx=>{assertOwner(ctx.user.id);await callForUser(ctx.user.id,"rts_close");return {disconnected:true};}],
@@ -112,6 +115,11 @@ const routes=new Map<string,(ctx:RequestContext)=>Promise<unknown>>([
   ["POST /api/watch",async ctx=>ctx.body.action==="remove"?(await removeWatch(ctx.user.id,ctx.body.id),user(ctx.user.id).watches):ctx.body.action==="toggle"?toggleWatch(ctx.user.id,ctx.body.id):addWatch(ctx.user.id,ctx.body.name,ctx.body.filter)],
   ["POST /api/export",async ctx=>{const {csv,filename}=buildExport(String(ctx.body.kind??""),ctx);return issueExportToken(csv,filename);}],
   ["POST /api/price-stats",ctx=>platform(ctx,"rts_price_stats")],
+  ["POST /api/ai-agent",async ctx=>{
+    if(!aiAgentAvailable())throw new Error("AI_AGENT_NOT_CONFIGURED");
+    if(rateLimited(aiAttempts,String(ctx.user.id),10,60*60_000))throw new Error("AI_RATE_LIMITED");
+    return withAiSlot(ctx.user.id,async()=>{let sourceText=str(ctx.body.sourceText,120_000),sourceLabel="текст Mini App";const url=str(ctx.body.url,1_000);if(url){assertRtsAccess(ctx.user.id);const tender=await callForUser<any>(ctx.user.id,"rts_get_request",{url});sourceText=JSON.stringify({title:tender.title,url:tender.url,text:tender.text,documents:tender.documents,tables:tender.tables});sourceLabel=`карточка РТС ${tender.title??url}`;}return runSourcingAgent({sourceText,sourceLabel,userId:ctx.user.id,role:user(ctx.user.id).role,deliveryRegion:str(ctx.body.deliveryRegion,200)||undefined});});
+  }],
 ]);
 
 async function platform(ctx:RequestContext,tool:string,args:Record<string,unknown>=ctx.body){assertRtsAccess(ctx.user.id);return callForUser(ctx.user.id,tool,args);}
@@ -119,9 +127,10 @@ async function platform(ctx:RequestContext,tool:string,args:Record<string,unknow
 // Pairing a new local agent proves ownership by possessing the one-time code
 // shown in the Mini App, not by Telegram initData — the agent process is not a
 // Telegram client. This is the only /api/connection route reachable without it.
-const pairAttempts=new Map<string,number[]>(),apiAttempts=new Map<string,number[]>(),inFlightByUser=new Map<number,number>();
+const pairAttempts=new Map<string,number[]>(),apiAttempts=new Map<string,number[]>(),aiAttempts=new Map<string,number[]>(),inFlightByUser=new Map<number,number>(),aiInFlight=new Set<number>();
 function rateLimited(map:Map<string,number[]>,key:string,max:number,windowMs:number){const now=Date.now();const hits=(map.get(key)??[]).filter(t=>now-t<windowMs);hits.push(now);map.set(key,hits);if(map.size>10_000){for(const [candidate,times] of map){if(!times.some(t=>now-t<windowMs))map.delete(candidate);if(map.size<=10_000)break;}if(map.size>10_000)map.delete(map.keys().next().value!);}return hits.length>max;}
 async function withRequestSlot<T>(userId:number,task:()=>Promise<T>){const active=inFlightByUser.get(userId)??0;if(active>=40)throw new Error("TOO_MANY_IN_FLIGHT");inFlightByUser.set(userId,active+1);try{return await task();}finally{const next=(inFlightByUser.get(userId)??1)-1;if(next<=0)inFlightByUser.delete(userId);else inFlightByUser.set(userId,next);}}
+async function withAiSlot<T>(userId:number,task:()=>Promise<T>){if(aiInFlight.has(userId))throw new Error("AI_ALREADY_RUNNING");aiInFlight.add(userId);try{return await task();}finally{aiInFlight.delete(userId);}}
 async function handleDevicePair(req:IncomingMessage,res:ServerResponse){
   try{
     const forwarded=String(req.headers["x-forwarded-for"]??"").split(",")[0].trim();const ip=`${req.socket.remoteAddress??"unknown"}|${forwarded}`;
@@ -154,6 +163,10 @@ export function publicError(error:unknown){
     RTS_NAVIGATION_ERROR:"Не удалось открыть страницу РТС. Повторите попытку.",
     RTS_UNAVAILABLE:"РТС временно недоступен после повторных сбоев.",
     RTS_QUEUE_TIMEOUT:"Браузер занят предыдущей операцией. Повторите попытку.",
+    AI_AGENT_NOT_CONFIGURED:"ИИ-агент установлен, но OPENAI_API_KEY ещё не настроен администратором.",
+    AI_SOURCE_TOO_SHORT:"Добавьте ссылку РТС или более подробное техническое задание.",
+    AI_RATE_LIMITED:"Лимит ИИ-анализов на этот час исчерпан. Повторите позже.",
+    AI_ALREADY_RUNNING:"Предыдущий ИИ-анализ ещё выполняется. Дождитесь результата.",
   };
   if(safeCodes[message])return safeCodes[message];
   if(/владелец|принадлежит другому|облачная авторизация/i.test(message))return message;
